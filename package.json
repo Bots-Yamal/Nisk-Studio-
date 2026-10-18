@@ -1,0 +1,16 @@
+{
+  "name": "nisk-studio-bot",
+  "version": "1.0.0",
+  "description": "Bot oficial de Nisk Studio | Programación",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "discord.js": "^14.22.1"
+  }
+}
