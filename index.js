@@ -12,7 +12,6 @@ const {
   TextInputStyle,
   ChannelType,
   PermissionFlagsBits,
-  PermissionsBitField,
   SlashCommandBuilder,
   REST,
   Routes
@@ -24,128 +23,12 @@ const path = require("path");
 const TOKEN = process.env.DISCORD_TOKEN;
 const PREFIX = "n.";
 const COLOR = 0xFFD54A;
+const DATA_FILE = path.join(__dirname, "data.json");
 
 if (!TOKEN) {
   console.error("❌ Falta DISCORD_TOKEN en las variables de entorno.");
   process.exit(1);
 }
-
-const DATA_FILE = path.join(__dirname, "data.json");
-
-/* =========================================================
-   BASE DE DATOS JSON
-========================================================= */
-
-let db = {};
-
-function loadDB() {
-  try {
-    if (!fs.existsSync(DATA_FILE)) {
-      fs.writeFileSync(DATA_FILE, JSON.stringify({}, null, 2));
-    }
-
-    db = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-  } catch (error) {
-    console.error("Error cargando data.json:", error);
-    db = {};
-  }
-}
-
-function saveDB() {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
-  } catch (error) {
-    console.error("Error guardando data.json:", error);
-  }
-}
-
-function createGuildData() {
-  return {
-    staffRole: null,
-
-    channels: {
-      welcome: null,
-      invites: null,
-      generalLogs: null,
-      moderationLogs: null,
-      ticketLogs: null,
-      transactionLogs: null,
-      levelLogs: null
-    },
-
-    ticketCategory: null,
-
-    ticketTypes: [
-      {
-        name: "Soporte",
-        questions: ["¿En qué te podemos ayudar?"]
-      }
-    ],
-
-    autoroles: [],
-
-    warns: {},
-
-    tickets: {},
-
-    invites: {
-      users: {}
-    },
-
-    levels: {
-      enabled: true,
-      channel: null,
-      xpPerMessage: 10,
-      cooldown: 60,
-      message: "🎉 ¡Felicidades {usuario}! Has alcanzado el nivel **{nivel}**.",
-      roles: {}
-    },
-
-    users: {},
-
-    giveaways: {}
-  };
-}
-
-function guildDB(guildId) {
-  if (!db[guildId]) {
-    db[guildId] = createGuildData();
-    saveDB();
-  }
-
-  const data = db[guildId];
-
-  // Compatibilidad por si falta alguna propiedad
-  const defaults = createGuildData();
-
-  for (const key of Object.keys(defaults)) {
-    if (data[key] === undefined) {
-      data[key] = defaults[key];
-    }
-  }
-
-  if (!data.channels) data.channels = defaults.channels;
-
-  for (const key of Object.keys(defaults.channels)) {
-    if (data.channels[key] === undefined) {
-      data.channels[key] = null;
-    }
-  }
-
-  if (!Array.isArray(data.ticketTypes)) {
-    data.ticketTypes = defaults.ticketTypes;
-  }
-
-  if (!data.levels) {
-    data.levels = defaults.levels;
-  }
-
-  saveDB();
-
-  return data;
-}
-
-loadDB();
 
 /* =========================================================
    CLIENTE
@@ -162,11 +45,166 @@ const client = new Client({
   ],
   partials: [
     Partials.Channel,
-    Partials.GuildMember,
     Partials.Message,
-    Partials.User
+    Partials.GuildMember
   ]
 });
+
+/* =========================================================
+   BASE JSON
+========================================================= */
+
+function loadDB() {
+  try {
+    if (!fs.existsSync(DATA_FILE)) {
+      fs.writeFileSync(
+        DATA_FILE,
+        JSON.stringify({}, null, 2)
+      );
+    }
+
+    return JSON.parse(
+      fs.readFileSync(DATA_FILE, "utf8")
+    );
+  } catch (error) {
+    console.error("❌ Error leyendo data.json:", error);
+    return {};
+  }
+}
+
+const db = loadDB();
+
+function saveDB() {
+  try {
+    fs.writeFileSync(
+      DATA_FILE,
+      JSON.stringify(db, null, 2)
+    );
+  } catch (error) {
+    console.error("❌ Error guardando data.json:", error);
+  }
+}
+
+function guildDB(guildId) {
+  if (!db[guildId]) {
+    db[guildId] = {
+      staffRole: null,
+
+      channels: {
+        welcome: null,
+        invites: null,
+        generalLogs: null,
+        moderationLogs: null,
+        ticketLogs: null,
+        transactionLogs: null,
+        levelLogs: null,
+        giveawayLogs: null
+      },
+
+      ticketCategory: null,
+
+      ticketTypes: {
+        soporte: {
+          name: "Soporte",
+          questions: [
+            "¿En qué te podemos ayudar?"
+          ]
+        }
+      },
+
+      autoroles: [],
+
+      warns: {},
+
+      tickets: {},
+
+      invites: {
+        users: {}
+      },
+
+      levels: {},
+
+      settings: {
+        levels: {
+          enabled: true,
+          channel: null,
+          xpMin: 8,
+          xpMax: 15,
+          cooldown: 60000,
+          message:
+            "🎉 {usuario} ha subido al nivel **{nivel}**.",
+          roleRewards: {}
+        }
+      },
+
+      economy: {},
+
+      shop: {},
+
+      giveaways: {},
+
+      honeypot: {
+        channel: null,
+        messageId: null,
+        bans: 0
+      }
+    };
+
+    saveDB();
+  }
+
+  const data = db[guildId];
+
+  /* Compatibilidad con data.json antiguo */
+
+  data.channels ||= {};
+  data.channels.welcome ||= null;
+  data.channels.invites ||= null;
+  data.channels.generalLogs ||= null;
+  data.channels.moderationLogs ||= null;
+  data.channels.ticketLogs ||= null;
+  data.channels.transactionLogs ||= null;
+  data.channels.levelLogs ||= null;
+  data.channels.giveawayLogs ||= null;
+
+  data.ticketTypes ||= {
+    soporte: {
+      name: "Soporte",
+      questions: [
+        "¿En qué te podemos ayudar?"
+      ]
+    }
+  };
+
+  data.autoroles ||= [];
+  data.warns ||= {};
+  data.tickets ||= {};
+  data.invites ||= { users: {} };
+  data.invites.users ||= {};
+  data.levels ||= {};
+
+  data.settings ||= {};
+  data.settings.levels ||= {};
+  data.settings.levels.enabled ??= true;
+  data.settings.levels.channel ||= null;
+  data.settings.levels.xpMin ??= 8;
+  data.settings.levels.xpMax ??= 15;
+  data.settings.levels.cooldown ??= 60000;
+  data.settings.levels.message ||=
+    "🎉 {usuario} ha subido al nivel **{nivel}**.";
+  data.settings.levels.roleRewards ||= {};
+
+  data.economy ||= {};
+  data.shop ||= {};
+  data.giveaways ||= {};
+
+  data.honeypot ||= {};
+  data.honeypot.channel ||= null;
+  data.honeypot.messageId ||= null;
+  data.honeypot.bans ??= 0;
+
+  return data;
+}
 
 /* =========================================================
    HELPERS
@@ -183,109 +221,270 @@ function yellowEmbed(title, description) {
     });
 }
 
-function isRealAdmin(member) {
-  if (!member) return false;
-
-  return (
-    member.permissions.has(PermissionFlagsBits.Administrator) ||
-    member.id === member.guild.ownerId
-  );
+function isAdmin(member) {
+  return !!member &&
+    member.permissions.has(
+      PermissionFlagsBits.Administrator
+    );
 }
 
 function isStaff(member) {
   if (!member) return false;
 
-  if (isRealAdmin(member)) return true;
-
   const data = guildDB(member.guild.id);
 
-  if (!data.staffRole) return false;
+  if (isAdmin(member)) return true;
 
-  return member.roles.cache.has(data.staffRole);
+  return !!(
+    data.staffRole &&
+    member.roles.cache.has(data.staffRole)
+  );
 }
 
-function cleanName(text) {
-  return text
+function isRealAdmin(member) {
+  return isAdmin(member);
+}
+
+function cleanName(name) {
+  return name
     .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/[^a-z0-9áéíóúñ]+/gi, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 70);
+    .slice(0, 80);
 }
 
-async function sendLog(guild, type, embed) {
+function ticketRecordByChannel(guildId, channelId) {
+  const data = guildDB(guildId);
+
+  return Object.values(data.tickets).find(
+    ticket =>
+      ticket.channelId === channelId
+  );
+}
+
+async function sendLog(guild, channelId, embed) {
+  if (!channelId) return;
+
+  const channel =
+    guild.channels.cache.get(channelId);
+
+  if (!channel || !channel.isTextBased()) return;
+
   try {
-    const data = guildDB(guild.id);
-
-    const channelId = data.channels[type];
-
-    if (!channelId) return;
-
-    const channel = guild.channels.cache.get(channelId);
-
-    if (!channel) return;
-
     await channel.send({
       embeds: [embed]
     });
-  } catch (error) {
-    console.error("Error enviando log:", error);
-  }
+  } catch {}
 }
 
-function getLevelData(guild, userId) {
-  const data = guildDB(guild.id);
+function getEconomyUser(guildId, userId) {
+  const data = guildDB(guildId);
 
-  if (!data.users[userId]) {
-    data.users[userId] = {
+  if (!data.economy[userId]) {
+    data.economy[userId] = {
+      coins: 0,
+      lastWork: 0,
+      lastLuck: 0
+    };
+  }
+
+  return data.economy[userId];
+}
+
+function getLevelData(guildId, userId) {
+  const data = guildDB(guildId);
+
+  if (!data.levels[userId]) {
+    data.levels[userId] = {
       xp: 0,
       level: 0,
       lastXP: 0
     };
   }
 
-  return data.users[userId];
+  return data.levels[userId];
 }
 
 function xpNeeded(level) {
-  return 100 + level * 50;
+  return 100 + level * 75;
 }
 
-function formatDuration(ms) {
-  const seconds = Math.floor(ms / 1000);
+function formatTime(ms) {
+  const seconds = Math.ceil(ms / 1000);
 
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
 
-  const parts = [];
+  const minutes = Math.ceil(seconds / 60);
 
-  if (days) parts.push(`${days}d`);
-  if (hours) parts.push(`${hours}h`);
-  if (minutes) parts.push(`${minutes}m`);
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
 
-  return parts.length ? parts.join(" ") : "menos de 1m";
+  const hours = Math.ceil(minutes / 60);
+
+  return `${hours}h`;
 }
 
-function findTicketByChannel(guild, channelId) {
-  const data = guildDB(guild.id);
+function parseDuration(text) {
+  if (!text) return null;
 
-  return Object.values(data.tickets).find(
-    ticket => ticket.channelId === channelId
+  const match =
+    /^(\d+)(s|m|h|d)$/i.exec(
+      text.trim()
+    );
+
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  const unit = match[2].toLowerCase();
+
+  const multipliers = {
+    s: 1000,
+    m: 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000
+  };
+
+  return amount * multipliers[unit];
+}
+
+/* =========================================================
+   NIVELES
+========================================================= */
+
+async function addXP(message) {
+  if (!message.guild || message.author.bot) return;
+
+  const data = guildDB(
+    message.guild.id
   );
-}
 
-function getTicketId() {
-  return Date.now().toString(36);
-}
+  if (!data.settings.levels.enabled) return;
 
-function parseQuestions(text) {
-  return text
-    .split("|")
-    .map(q => q.trim())
-    .filter(Boolean)
-    .slice(0, 5);
+  const user =
+    getLevelData(
+      message.guild.id,
+      message.author.id
+    );
+
+  const now = Date.now();
+
+  if (
+    now - user.lastXP <
+    data.settings.levels.cooldown
+  ) {
+    return;
+  }
+
+  user.lastXP = now;
+
+  const min =
+    Math.max(
+      1,
+      Number(data.settings.levels.xpMin)
+    );
+
+  const max =
+    Math.max(
+      min,
+      Number(data.settings.levels.xpMax)
+    );
+
+  const amount =
+    Math.floor(
+      Math.random() *
+      (max - min + 1)
+    ) + min;
+
+  user.xp += amount;
+
+  let leveledUp = false;
+
+  while (
+    user.xp >=
+    xpNeeded(user.level)
+  ) {
+    user.xp -=
+      xpNeeded(user.level);
+
+    user.level++;
+
+    leveledUp = true;
+  }
+
+  if (!leveledUp) {
+    saveDB();
+    return;
+  }
+
+  saveDB();
+
+  const text =
+    data.settings.levels.message
+      .replace(
+        "{usuario}",
+        `<@${message.author.id}>`
+      )
+      .replace(
+        "{nivel}",
+        String(user.level)
+      );
+
+  const levelChannel =
+    data.settings.levels.channel
+      ? message.guild.channels.cache.get(
+          data.settings.levels.channel
+        )
+      : message.channel;
+
+  if (levelChannel?.isTextBased()) {
+    await levelChannel.send({
+      embeds: [
+        yellowEmbed(
+          "╭・✦・────────────・✦・╮\n       📈 SUBIDA DE NIVEL\n╰・✦・────────────・✦・╯",
+          `✨ ${text}\n\n` +
+          `💛 Sigue participando en **Nisk Studio** para continuar subiendo.`
+        )
+      ]
+    });
+  }
+
+  /* Rol de recompensa */
+
+  const rewardRoleId =
+    data.settings.levels.roleRewards[
+      String(user.level)
+    ];
+
+  if (rewardRoleId) {
+    const role =
+      message.guild.roles.cache.get(
+        rewardRoleId
+      );
+
+    if (
+      role &&
+      message.member &&
+      role.position <
+        message.guild.members.me.roles.highest.position
+    ) {
+      await message.member.roles
+        .add(role)
+        .catch(() => {});
+    }
+  }
+
+  await sendLog(
+    message.guild,
+    data.channels.levelLogs,
+    yellowEmbed(
+      "📈 Nuevo nivel",
+      `👤 Usuario: <@${message.author.id}>\n` +
+      `🏆 Nivel: **${user.level}**`
+    )
+  );
 }
 
 /* =========================================================
@@ -296,3686 +495,5933 @@ const inviteCache = new Map();
 
 async function cacheGuildInvites(guild) {
   try {
-    const invites = await guild.invites.fetch();
+    const invites =
+      await guild.invites.fetch();
 
-    const data = {};
+    const inviteMap = new Map();
 
     invites.forEach(invite => {
-      data[invite.code] = invite.uses || 0;
+      inviteMap.set(
+        invite.code,
+        {
+          uses: invite.uses || 0,
+          inviter:
+            invite.inviter?.id || null
+        }
+      );
     });
 
-    inviteCache.set(guild.id, data);
-  } catch (error) {
-    console.log(`No se pudieron obtener invites de ${guild.name}`);
-  }
+    inviteCache.set(
+      guild.id,
+      inviteMap
+    );
+  } catch {}
 }
 
-function findUsedInvite(guild, newInvites) {
-  const oldInvites = inviteCache.get(guild.id) || {};
+function getInviteUser(
+  guildId,
+  userId
+) {
+  const data =
+    guildDB(guildId);
 
-  for (const invite of newInvites.values()) {
-    const oldUses = oldInvites[invite.code] || 0;
-    const newUses = invite.uses || 0;
-
-    if (newUses > oldUses) {
-      return invite;
-    }
+  if (
+    !data.invites.users[userId]
+  ) {
+    data.invites.users[userId] = {
+      total: 0,
+      active: 0,
+      left: 0,
+      members: []
+    };
   }
 
-  return null;
+  data.invites.users[userId].members ||=
+    [];
+
+  return data.invites.users[userId];
+}
+
+async function detectInvite(guild) {
+  try {
+    const oldInvites =
+      inviteCache.get(
+        guild.id
+      ) || new Map();
+
+    const newInvites =
+      await guild.invites.fetch();
+
+    let usedInvite = null;
+
+    newInvites.forEach(
+      invite => {
+        const old =
+          oldInvites.get(
+            invite.code
+          );
+
+        if (
+          !old ||
+          (invite.uses || 0) >
+            old.uses
+        ) {
+          usedInvite = invite;
+        }
+      }
+    );
+
+    const newMap =
+      new Map();
+
+    newInvites.forEach(
+      invite => {
+        newMap.set(
+          invite.code,
+          {
+            uses:
+              invite.uses || 0,
+            inviter:
+              invite.inviter?.id ||
+              null
+          }
+        );
+      }
+    );
+
+    inviteCache.set(
+      guild.id,
+      newMap
+    );
+
+    return usedInvite;
+  } catch {
+    return null;
+  }
 }
 
 /* =========================================================
-   REGISTRO DE SLASH COMMANDS
+   HONEYPOT MESSAGE
 ========================================================= */
 
-const commands = [
-  new SlashCommandBuilder()
-    .setName("admin")
-    .setDescription("Abre el panel de administración.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+async function updateHoneypotCounter(
+  guild
+) {
+  const data =
+    guildDB(guild.id);
 
-  new SlashCommandBuilder()
-    .setName("staff")
-    .setDescription("Configura el rol de staff.")
-    .addRoleOption(option =>
-      option
-        .setName("rol")
-        .setDescription("Rol que será considerado staff.")
-        .setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  if (
+    !data.honeypot.channel ||
+    !data.honeypot.messageId
+  ) {
+    return;
+  }
 
-  new SlashCommandBuilder()
-    .setName("addcategory")
-    .setDescription("Añade una categoría de tickets.")
-    .addStringOption(option =>
-      option
-        .setName("nombre")
-        .setDescription("Nombre de la categoría.")
-        .setRequired(true)
-    )
-    .addStringOption(option =>
-      option
-        .setName("preguntas")
-        .setDescription("Preguntas separadas por |")
-        .setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  const channel =
+    guild.channels.cache.get(
+      data.honeypot.channel
+    );
 
-  new SlashCommandBuilder()
-    .setName("removecategory")
-    .setDescription("Elimina una categoría de tickets.")
-    .addStringOption(option =>
-      option
-        .setName("nombre")
-        .setDescription("Nombre de la categoría.")
-        .setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  if (!channel?.isTextBased()) {
+    return;
+  }
 
-  new SlashCommandBuilder()
-    .setName("ticketpanel")
-    .setDescription("Envía el panel de tickets.")
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  try {
+    const message =
+      await channel.messages.fetch(
+        data.honeypot.messageId
+      );
 
-  new SlashCommandBuilder()
-    .setName("ticketcategory")
-    .setDescription("Configura la categoría de Discord donde se crearán los tickets.")
-    .addChannelOption(option =>
-      option
-        .setName("categoria")
-        .setDescription("Categoría de Discord.")
-        .addChannelTypes(ChannelType.GuildCategory)
-        .setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    const row =
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(
+            "honeypot_counter"
+          )
+          .setLabel(
+            `Ban: ${data.honeypot.bans}`
+          )
+          .setEmoji("🔨")
+          .setStyle(
+            ButtonStyle.Secondary
+          )
+          .setDisabled(true)
+      );
 
-  new SlashCommandBuilder()
-    .setName("welcome")
-    .setDescription("Configura el canal de bienvenida.")
-    .addChannelOption(option =>
-      option
-        .setName("canal")
-        .setDescription("Canal de bienvenida.")
-        .setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-  new SlashCommandBuilder()
-    .setName("invite")
-    .setDescription("Configura el canal de invitaciones.")
-    .addChannelOption(option =>
-      option
-        .setName("canal")
-        .setDescription("Canal de invitaciones.")
-        .setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-  new SlashCommandBuilder()
-    .setName("autorole")
-    .setDescription("Añade un autorol.")
-    .addRoleOption(option =>
-      option
-        .setName("rol")
-        .setDescription("Rol automático.")
-        .setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-  new SlashCommandBuilder()
-    .setName("autorole-remove")
-    .setDescription("Elimina un autorol.")
-    .addRoleOption(option =>
-      option
-        .setName("rol")
-        .setDescription("Rol.")
-        .setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-  new SlashCommandBuilder()
-    .setName("logs")
-    .setDescription("Configura un canal de logs.")
-    .addStringOption(option =>
-      option
-        .setName("tipo")
-        .setDescription("Tipo de logs.")
-        .setRequired(true)
-        .addChoices(
-          { name: "General", value: "generalLogs" },
-          { name: "Moderación", value: "moderationLogs" },
-          { name: "Tickets", value: "ticketLogs" },
-          { name: "Transacciones", value: "transactionLogs" },
-          { name: "Niveles", value: "levelLogs" }
-        )
-    )
-    .addChannelOption(option =>
-      option
-        .setName("canal")
-        .setDescription("Canal de logs.")
-        .setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-  new SlashCommandBuilder()
-    .setName("levels")
-    .setDescription("Configura el sistema de niveles.")
-    .addBooleanOption(option =>
-      option
-        .setName("activo")
-        .setDescription("Activar o desactivar niveles.")
-        .setRequired(true)
-    )
-    .addChannelOption(option =>
-      option
-        .setName("canal")
-        .setDescription("Canal para mensajes de subida de nivel.")
-    )
-    .addIntegerOption(option =>
-      option
-        .setName("xp")
-        .setDescription("XP por mensaje.")
-        .setMinValue(1)
-        .setMaxValue(1000)
-    )
-    .addIntegerOption(option =>
-      option
-        .setName("cooldown")
-        .setDescription("Cooldown en segundos.")
-        .setMinValue(0)
-        .setMaxValue(3600)
-    )
-    .addStringOption(option =>
-      option
-        .setName("mensaje")
-        .setDescription("Mensaje. Usa {usuario} y {nivel}.")
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-  new SlashCommandBuilder()
-    .setName("rank")
-    .setDescription("Muestra tu nivel."),
-
-  new SlashCommandBuilder()
-    .setName("embed")
-    .setDescription("Envía un embed.")
-    .addStringOption(option =>
-      option
-        .setName("mensaje")
-        .setDescription("Contenido del embed.")
-        .setRequired(true)
-    )
-    .addStringOption(option =>
-      option
-        .setName("color")
-        .setDescription("Color hexadecimal, por ejemplo #FFD54A.")
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
-
-  new SlashCommandBuilder()
-    .setName("pay")
-    .setDescription("Registra una transacción.")
-    .addUserOption(option =>
-      option
-        .setName("usuario")
-        .setDescription("Usuario.")
-        .setRequired(true)
-    )
-    .addStringOption(option =>
-      option
-        .setName("cantidad")
-        .setDescription("Cantidad.")
-        .setRequired(true)
-    )
-    .addStringOption(option =>
-      option
-        .setName("concepto")
-        .setDescription("Concepto.")
-        .setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
-
-  new SlashCommandBuilder()
-    .setName("invitescheck")
-    .setDescription("Consulta las invitaciones de un usuario.")
-    .addUserOption(option =>
-      option
-        .setName("usuario")
-        .setDescription("Usuario.")
-        .setRequired(true)
-    ),
-
-  new SlashCommandBuilder()
-    .setName("ban")
-    .setDescription("Banea un usuario.")
-    .addUserOption(option =>
-      option
-        .setName("usuario")
-        .setDescription("Usuario.")
-        .setRequired(true)
-    )
-    .addStringOption(option =>
-      option
-        .setName("razon")
-        .setDescription("Razón.")
-    ),
-
-  new SlashCommandBuilder()
-    .setName("kick")
-    .setDescription("Expulsa un usuario.")
-    .addUserOption(option =>
-      option
-        .setName("usuario")
-        .setDescription("Usuario.")
-        .setRequired(true)
-    )
-    .addStringOption(option =>
-      option
-        .setName("razon")
-        .setDescription("Razón.")
-    ),
-
-  new SlashCommandBuilder()
-    .setName("mute")
-    .setDescription("Silencia temporalmente un usuario.")
-    .addUserOption(option =>
-      option
-        .setName("usuario")
-        .setDescription("Usuario.")
-        .setRequired(true)
-    )
-    .addIntegerOption(option =>
-      option
-        .setName("minutos")
-        .setDescription("Duración.")
-        .setMinValue(1)
-        .setMaxValue(40320)
-        .setRequired(true)
-    )
-    .addStringOption(option =>
-      option
-        .setName("razon")
-        .setDescription("Razón.")
-    ),
-
-  new SlashCommandBuilder()
-    .setName("unmute")
-    .setDescription("Quita el timeout.")
-    .addUserOption(option =>
-      option
-        .setName("usuario")
-        .setDescription("Usuario.")
-        .setRequired(true)
-    ),
-
-  new SlashCommandBuilder()
-    .setName("purge")
-    .setDescription("Elimina mensajes.")
-    .addIntegerOption(option =>
-      option
-        .setName("cantidad")
-        .setDescription("Cantidad.")
-        .setMinValue(1)
-        .setMaxValue(100)
-        .setRequired(true)
-    ),
-
-  new SlashCommandBuilder()
-    .setName("warn")
-    .setDescription("Advierte a un usuario.")
-    .addUserOption(option =>
-      option
-        .setName("usuario")
-        .setDescription("Usuario.")
-        .setRequired(true)
-    )
-    .addStringOption(option =>
-      option
-        .setName("razon")
-        .setDescription("Razón.")
-        .setRequired(true)
-    ),
-
-  new SlashCommandBuilder()
-    .setName("warnings")
-    .setDescription("Muestra las advertencias.")
-    .addUserOption(option =>
-      option
-        .setName("usuario")
-        .setDescription("Usuario.")
-        .setRequired(true)
-    ),
-
-  new SlashCommandBuilder()
-    .setName("sorteo")
-    .setDescription("Crea un sorteo.")
-    .addStringOption(option =>
-      option
-        .setName("duracion")
-        .setDescription("Ejemplo: 10m, 1h, 2d.")
-        .setRequired(true)
-    )
-    .addIntegerOption(option =>
-      option
-        .setName("ganadores")
-        .setDescription("Número de ganadores.")
-        .setMinValue(1)
-        .setMaxValue(20)
-        .setRequired(true)
-    )
-    .addStringOption(option =>
-      option
-        .setName("premio")
-        .setDescription("Premio.")
-        .setRequired(true)
-    )
-    .addIntegerOption(option =>
-      option
-        .setName("invitaciones")
-        .setDescription("Invitaciones mínimas.")
-        .setMinValue(0)
-        .setMaxValue(100)
-    )
-    .addIntegerOption(option =>
-      option
-        .setName("nivel")
-        .setDescription("Nivel mínimo.")
-        .setMinValue(0)
-        .setMaxValue(100)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
-
-  new SlashCommandBuilder()
-    .setName("reroll")
-    .setDescription("Elige un nuevo ganador de un sorteo.")
-    .addStringOption(option =>
-      option
-        .setName("id")
-        .setDescription("ID del sorteo.")
-        .setRequired(true)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-].map(command => command.toJSON());
+    await message.edit({
+      components: [row]
+    });
+  } catch {}
+}
 
 /* =========================================================
    READY
 ========================================================= */
 
-client.once("ready", async () => {
-  console.log(`✅ ${client.user.tag} está conectado.`);
-  console.log(`📌 Servidores: ${client.guilds.cache.size}`);
-
-  client.user.setPresence({
-    activities: [
-      {
-        name: "Nisk Studio 💛",
-        type: 3
-      }
-    ],
-    status: "online"
-  });
-
-  const rest = new REST({ version: "10" }).setToken(TOKEN);
-
-  try {
-    await rest.put(
-      Routes.applicationCommands(client.user.id),
-      {
-        body: commands
-      }
+client.once(
+  "ready",
+  async () => {
+    console.log(
+      `✅ ${client.user.tag} está conectado.`
     );
 
-    console.log("✅ Slash commands registrados.");
-  } catch (error) {
-    console.error("Error registrando slash commands:", error);
-  }
+    client.user.setPresence({
+      activities: [
+        {
+          name: "Nisk Studio 💛",
+          type: 3
+        }
+      ],
+      status: "online"
+    });
 
-  for (const guild of client.guilds.cache.values()) {
-    await cacheGuildInvites(guild);
-  }
-});
+    for (
+      const guild of
+      client.guilds.cache.values()
+    ) {
+      await cacheGuildInvites(
+        guild
+      );
+    }
 
-/* =========================================================
-   MIEMBRO ENTRA
-========================================================= */
+    await registerCommands();
 
-client.on("guildMemberAdd", async member => {
-  const data = guildDB(member.guild.id);
-
-  /* AUTOROLES */
-
-  for (const roleId of data.autoroles) {
-    try {
-      const role = member.guild.roles.cache.get(roleId);
-
-      if (role && role.position < member.guild.members.me.roles.highest.position) {
-        await member.roles.add(role);
-      }
-    } catch {}
-  }
-
-  /* INVITE */
-
-  let inviter = null;
-  let usedInvite = null;
-
-  try {
-    const invites = await member.guild.invites.fetch();
-
-    usedInvite = findUsedInvite(member.guild, invites);
-
-    inviteCache.set(
-      member.guild.id,
-      Object.fromEntries(
-        invites.map(invite => [invite.code, invite.uses || 0])
-      )
+    console.log(
+      `📌 Servidores: ${client.guilds.cache.size}`
     );
-
-    if (usedInvite && usedInvite.inviter) {
-      inviter = usedInvite.inviter;
-    }
-  } catch {}
-
-  if (inviter) {
-    if (!data.invites.users[inviter.id]) {
-      data.invites.users[inviter.id] = {
-        total: 0,
-        active: 0,
-        left: 0,
-        members: []
-      };
-    }
-
-    const info = data.invites.users[inviter.id];
-
-    info.total++;
-    info.active++;
-    info.members.push(member.id);
-
-    saveDB();
   }
-
-  /* WELCOME */
-
-  if (data.channels.welcome) {
-    const channel = member.guild.channels.cache.get(data.channels.welcome);
-
-    if (channel) {
-      const embed = new EmbedBuilder()
-        .setColor(COLOR)
-        .setDescription(
-`╭・✦・────────────・✦・╮
-　　　💛 NISK STUDIO
-╰・✦・────────────・✦・╯
-
-👋・¡Bienvenido/a ${member}!
-
-Nos alegra tenerte en Nisk Studio, una comunidad donde podrás hablar, compartir y aprender sobre programación, bots, juegos y mucho más.
-
-📌・Lee las reglas para evitar problemas.
-💬・Participa y conoce a la comunidad.
-💻・Comparte tus proyectos e ideas.
-🎮・Diviértete y pasa un buen rato.
-
-Esperamos que disfrutes tu estancia y formes parte de esta comunidad. 💛
-
-╭・──────────────・╮
-　✨ ¡Gracias por unirte!
-╰・──────────────・╯`
-        )
-        .setTimestamp()
-        .setFooter({
-          text: "Nisk Studio | Programación"
-        });
-
-      await channel.send({
-        embeds: [embed]
-      });
-    }
-  }
-
-  /* INVITE ANNOUNCEMENT */
-
-  if (inviter && data.channels.invites) {
-    const channel = member.guild.channels.cache.get(data.channels.invites);
-
-    if (channel) {
-      const info = data.invites.users[inviter.id];
-
-      const embed = new EmbedBuilder()
-        .setColor(COLOR)
-        .setTitle("💛・¡Nueva invitación!")
-        .setDescription(
-`👤・${member} se ha unido a Nisk Studio.
-
-🔗・Invitado por: ${inviter}
-✨・${inviter} ahora tiene **${info.total}** invitaciones.
-👥・Ya somos **${member.guild.memberCount}** miembros.
-
-Gracias por ayudar a crecer la comunidad. 💛`
-        )
-        .setTimestamp();
-
-      await channel.send({
-        embeds: [embed]
-      });
-    }
-  }
-
-  await sendLog(
-    member.guild,
-    "generalLogs",
-    yellowEmbed(
-      "👋 Nuevo miembro",
-      `**Usuario:** ${member}\n**ID:** \`${member.id}\``
-    )
-  );
-});
+);
 
 /* =========================================================
-   MIEMBRO SALE
+   JOIN
 ========================================================= */
 
-client.on("guildMemberRemove", async member => {
-  const data = guildDB(member.guild.id);
+client.on(
+  "guildMemberAdd",
+  async member => {
+    const data =
+      guildDB(
+        member.guild.id
+      );
 
-  for (const userId of Object.keys(data.invites.users)) {
-    const info = data.invites.users[userId];
+    /* AUTOROLES */
 
-    if (info.members && info.members.includes(member.id)) {
-      info.active = Math.max(0, info.active - 1);
-      info.left++;
+    for (
+      const roleId of
+      data.autoroles
+    ) {
+      const role =
+        member.guild.roles.cache.get(
+          roleId
+        );
+
+      if (!role) continue;
+
+      try {
+        await member.roles.add(
+          role
+        );
+      } catch {}
+    }
+
+    /* INVITE */
+
+    const invite =
+      await detectInvite(
+        member.guild
+      );
+
+    if (invite?.inviter) {
+      const inviter =
+        getInviteUser(
+          member.guild.id,
+          invite.inviter
+        );
+
+      inviter.total++;
+      inviter.active++;
+
+      if (
+        !inviter.members.includes(
+          member.id
+        )
+      ) {
+        inviter.members.push(
+          member.id
+        );
+      }
 
       saveDB();
-      break;
+
+      if (
+        data.channels.invites
+      ) {
+        const channel =
+          member.guild.channels.cache.get(
+            data.channels.invites
+          );
+
+        if (
+          channel?.isTextBased()
+        ) {
+          await channel.send({
+            embeds: [
+              yellowEmbed(
+                "💛・¡Nueva invitación!",
+                `👤・${member} se ha unido a Nisk Studio.\n\n` +
+                `🔗・Invitado por: <@${invite.inviter}>\n` +
+                `✨・<@${invite.inviter}> ahora tiene **${inviter.total}** invitaciones.\n` +
+                `👥・Ya somos **${member.guild.memberCount}** miembros.\n\n` +
+                `Gracias por ayudar a crecer la comunidad. 💛`
+              )
+            ]
+          });
+        }
+      }
     }
-  }
 
-  await sendLog(
-    member.guild,
-    "generalLogs",
-    yellowEmbed(
-      "📤 Miembro salió",
-      `**Usuario:** ${member.user.tag}\n**ID:** \`${member.id}\``
-    )
-  );
-});
+    /* WELCOME */
 
-/* =========================================================
-   SISTEMA DE NIVELES
-========================================================= */
+    if (
+      data.channels.welcome
+    ) {
+      const channel =
+        member.guild.channels.cache.get(
+          data.channels.welcome
+        );
 
-client.on("messageCreate", async message => {
-  if (!message.guild || message.author.bot) return;
-
-  const data = guildDB(message.guild.id);
-
-  if (!data.levels.enabled) return;
-
-  const userData = getLevelData(message.guild, message.author.id);
-
-  const now = Date.now();
-  const cooldown = Number(data.levels.cooldown || 60) * 1000;
-
-  if (now - userData.lastXP < cooldown) return;
-
-  userData.lastXP = now;
-
-  const xpAmount = Number(data.levels.xpPerMessage || 10);
-
-  userData.xp += xpAmount;
-
-  let leveledUp = false;
-
-  while (userData.xp >= xpNeeded(userData.level)) {
-    userData.xp -= xpNeeded(userData.level);
-    userData.level++;
-    leveledUp = true;
-  }
-
-  saveDB();
-
-  if (leveledUp) {
-    const levelMessage = String(data.levels.message)
-      .replaceAll("{usuario}", message.author.toString())
-      .replaceAll("{nivel}", userData.level);
-
-    const channel =
-      (data.levels.channel &&
-        message.guild.channels.cache.get(data.levels.channel)) ||
-      message.channel;
-
-    await channel.send({
-      embeds: [
-        yellowEmbed(
-          "🎉 ¡Nuevo nivel!",
-          levelMessage
-        )
-      ]
-    });
-
-    await sendLog(
-      message.guild,
-      "levelLogs",
-      yellowEmbed(
-        "📈 Subida de nivel",
-        `${message.author} ha alcanzado el nivel **${userData.level}**.`
-      )
-    );
-
-    const roleId = data.levels.roles[String(userData.level)];
-
-    if (roleId) {
-      const role = message.guild.roles.cache.get(roleId);
-
-      if (role) {
-        try {
-          await message.member.roles.add(role);
-        } catch {}
+      if (
+        channel?.isTextBased()
+      ) {
+        await channel.send({
+          embeds: [
+            yellowEmbed(
+              "╭・✦・────────────・✦・╮\n　　　💛 NISK STUDIO\n╰・✦・────────────・✦・╯",
+              `👋・¡Bienvenido/a ${member}!\n\n` +
+              `Nos alegra tenerte en Nisk Studio, una comunidad donde podrás hablar, compartir y aprender sobre programación, bots, juegos y mucho más.\n\n` +
+              `📌・Lee las reglas para evitar problemas.\n` +
+              `💬・Participa y conoce a la comunidad.\n` +
+              `💻・Comparte tus proyectos e ideas.\n` +
+              `🎮・Diviértete y pasa un buen rato.\n\n` +
+              `Esperamos que disfrutes tu estancia y formes parte de esta comunidad. 💛\n\n` +
+              `╭・──────────────・╮\n　✨ ¡Gracias por unirte!\n╰・──────────────・╯`
+            )
+          ]
+        });
       }
     }
   }
-});
+);
 
 /* =========================================================
-   PREFIX COMMANDS
+   LEAVE
 ========================================================= */
 
-client.on("messageCreate", async message => {
-  if (!message.guild || message.author.bot) return;
-  if (!message.content.toLowerCase().startsWith(PREFIX)) return;
-
-  const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
-  const command = args.shift()?.toLowerCase();
-
-  if (!command) return;
-
-  const data = guildDB(message.guild.id);
-
-  /* ================= ADMIN ================= */
-
-  if (command === "admin") {
-    if (!isRealAdmin(message.member)) {
-      return message.reply("❌ Solo los administradores pueden usar este panel.");
-    }
-
-    return sendAdminPanel(message);
-  }
-
-  /* ================= STAFF ================= */
-
-  if (command === "staff") {
-    if (!isRealAdmin(message.member)) {
-      return message.reply("❌ Solo los administradores pueden configurar el staff.");
-    }
-
-    const role = message.mentions.roles.first();
-
-    if (!role) {
-      return message.reply("Uso: `n.staff @Rol`");
-    }
-
-    data.staffRole = role.id;
-    saveDB();
-
-    return message.reply({
-      embeds: [
-        yellowEmbed(
-          "🛡️ Staff configurado",
-          `El rol ${role} ahora es el rol de **Staff**.`
-        )
-      ]
-    });
-  }
-
-  /* ================= ADD CATEGORY ================= */
-
-  if (command === "addcategory") {
-    if (!isRealAdmin(message.member)) {
-      return message.reply("❌ Solo administradores.");
-    }
-
-    const raw = message.content
-      .slice(PREFIX.length + command.length)
-      .trim();
-
-    const parts = raw
-      .split("|")
-      .map(x => x.trim())
-      .filter(Boolean);
-
-    const name = parts.shift();
-
-    if (!name || parts.length === 0) {
-      return message.reply(
-        "Uso:\n`n.addcategory Soporte | ¿En qué te puedo ayudar?`\n\nPuedes añadir hasta 5 preguntas."
+client.on(
+  "guildMemberRemove",
+  async member => {
+    const data =
+      guildDB(
+        member.guild.id
       );
+
+    for (
+      const userId of
+      Object.keys(
+        data.invites.users
+      )
+    ) {
+      const inviter =
+        data.invites.users[
+          userId
+        ];
+
+      inviter.members ||= [];
+
+      const index =
+        inviter.members.indexOf(
+          member.id
+        );
+
+      if (index !== -1) {
+        inviter.members.splice(
+          index,
+          1
+        );
+
+        if (
+          inviter.active > 0
+        ) {
+          inviter.active--;
+        }
+
+        inviter.left++;
+
+        saveDB();
+
+        break;
+      }
     }
-
-    const questions = parts.slice(0, 5);
-
-    data.ticketTypes = data.ticketTypes.filter(
-      category =>
-        category.name.toLowerCase() !== name.toLowerCase()
-    );
-
-    data.ticketTypes.push({
-      name,
-      questions
-    });
-
-    saveDB();
-
-    return message.reply({
-      embeds: [
-        yellowEmbed(
-          "🎫 Categoría añadida",
-          `**Nombre:** ${name}\n\n${questions
-            .map((q, i) => `**${i + 1}.** ${q}`)
-            .join("\n")}`
-        )
-      ]
-    });
-  }
-
-  /* ================= REMOVE CATEGORY ================= */
-
-  if (command === "removecategory") {
-    if (!isRealAdmin(message.member)) {
-      return message.reply("❌ Solo administradores.");
-    }
-
-    const name = args.join(" ");
-
-    if (!name) {
-      return message.reply("Uso: `n.removecategory Soporte`");
-    }
-
-    const oldLength = data.ticketTypes.length;
-
-    data.ticketTypes = data.ticketTypes.filter(
-      category =>
-        category.name.toLowerCase() !== name.toLowerCase()
-    );
-
-    if (data.ticketTypes.length === oldLength) {
-      return message.reply("❌ No existe esa categoría.");
-    }
-
-    saveDB();
-
-    return message.reply(`✅ Categoría **${name}** eliminada.`);
-  }
-
-  /* ================= TICKET PANEL ================= */
-
-  if (command === "ticketpanel") {
-    if (!isRealAdmin(message.member)) {
-      return message.reply("❌ Solo administradores.");
-    }
-
-    return sendTicketPanel(message.channel);
-  }
-
-  /* ================= TICKET CATEGORY ================= */
-
-  if (command === "ticketcategory") {
-    if (!isRealAdmin(message.member)) {
-      return message.reply("❌ Solo administradores.");
-    }
-
-    const category = message.mentions.channels.first();
-
-    if (!category || category.type !== ChannelType.GuildCategory) {
-      return message.reply(
-        "Uso: `n.ticketcategory #categoria`"
-      );
-    }
-
-    data.ticketCategory = category.id;
-    saveDB();
-
-    return message.reply(
-      `✅ Los tickets se crearán dentro de ${category}.`
-    );
-  }
-
-  /* ================= WELCOME ================= */
-
-  if (command === "welcome") {
-    if (!isRealAdmin(message.member)) {
-      return message.reply("❌ Solo administradores.");
-    }
-
-    const channel = message.mentions.channels.first();
-
-    if (!channel) {
-      return message.reply("Uso: `n.welcome #canal`");
-    }
-
-    data.channels.welcome = channel.id;
-    saveDB();
-
-    return message.reply(
-      `✅ Canal de bienvenida configurado: ${channel}`
-    );
-  }
-
-  /* ================= INVITE ================= */
-
-  if (command === "invite") {
-    if (!isRealAdmin(message.member)) {
-      return message.reply("❌ Solo administradores.");
-    }
-
-    const channel = message.mentions.channels.first();
-
-    if (!channel) {
-      return message.reply("Uso: `n.invite #canal`");
-    }
-
-    data.channels.invites = channel.id;
-    saveDB();
-
-    return message.reply(
-      `✅ Canal de invitaciones configurado: ${channel}`
-    );
-  }
-
-  /* ================= INVITES CHECK ================= */
-
-  if (command === "invitescheck") {
-    if (!isStaff(message.member)) {
-      return message.reply("❌ No tienes permiso.");
-    }
-
-    const user =
-      message.mentions.users.first() ||
-      message.author;
-
-    return sendInviteStats(message, user);
-  }
-
-  /* ================= AUTOROLE ================= */
-
-  if (command === "autorole") {
-    if (!isRealAdmin(message.member)) {
-      return message.reply("❌ Solo administradores.");
-    }
-
-    const role = message.mentions.roles.first();
-
-    if (!role) {
-      return message.reply("Uso: `n.autorole @Rol`");
-    }
-
-    if (!data.autoroles.includes(role.id)) {
-      data.autoroles.push(role.id);
-    }
-
-    saveDB();
-
-    return message.reply(
-      `✅ ${role} añadido como autorol.`
-    );
-  }
-
-  if (command === "autorole-remove") {
-    if (!isRealAdmin(message.member)) {
-      return message.reply("❌ Solo administradores.");
-    }
-
-    const role = message.mentions.roles.first();
-
-    if (!role) {
-      return message.reply("Uso: `n.autorole-remove @Rol`");
-    }
-
-    data.autoroles = data.autoroles.filter(
-      id => id !== role.id
-    );
-
-    saveDB();
-
-    return message.reply(
-      `✅ ${role} eliminado de los autoroles.`
-    );
-  }
-
-  /* ================= EMBED ================= */
-
-  if (command === "embed") {
-    if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-      return message.reply("❌ No tienes permiso.");
-    }
-
-    const raw = message.content
-      .slice(PREFIX.length + command.length)
-      .trim();
-
-    const firstSpace = raw.indexOf(" ");
-
-    if (firstSpace === -1) {
-      return message.reply(
-        "Uso: `n.embed #FFD54A Tu mensaje`"
-      );
-    }
-
-    const colorText = raw.slice(0, firstSpace);
-    const content = raw.slice(firstSpace + 1);
-
-    let color = COLOR;
-
-    if (/^#[0-9A-F]{6}$/i.test(colorText)) {
-      color = parseInt(colorText.slice(1), 16);
-    }
-
-    const embed = new EmbedBuilder()
-      .setColor(color)
-      .setDescription(content)
-      .setTimestamp();
-
-    const attachment = message.attachments.first();
-
-    if (attachment) {
-      embed.setImage(attachment.url);
-    }
-
-    return message.channel.send({
-      embeds: [embed]
-    });
-  }
-
-  /* ================= PAY ================= */
-
-  if (command === "pay") {
-    if (!isStaff(message.member)) {
-      return message.reply("❌ No tienes permiso.");
-    }
-
-    const user = message.mentions.users.first();
-
-    const withoutMention = args
-      .filter(x => !x.startsWith("<@"))
-      .join(" ");
-
-    const split = withoutMention.split(" ");
-
-    const amount = split.shift();
-    const concept = split.join(" ");
-
-    if (!user || !amount || !concept) {
-      return message.reply(
-        "Uso: `n.pay @usuario cantidad concepto`"
-      );
-    }
-
-    const embed = yellowEmbed(
-      "💳 Transacción registrada",
-      `👤 **Usuario:** ${user}
-💰 **Cantidad:** ${amount}
-📝 **Concepto:** ${concept}
-👮 **Registrado por:** ${message.author}`
-    );
-
-    await message.channel.send({
-      embeds: [embed]
-    });
 
     await sendLog(
-      message.guild,
-      "transactionLogs",
-      embed
-    );
-
-    return;
-  }
-
-  /* ================= RANK ================= */
-
-  if (command === "rank") {
-    return sendRank(message, message.author);
-  }
-
-  /* ================= PURGE ================= */
-
-  if (command === "purge") {
-    if (!isStaff(message.member)) {
-      return message.reply("❌ No tienes permiso.");
-    }
-
-    const amount = Number(args[0]);
-
-    if (!amount || amount < 1 || amount > 100) {
-      return message.reply(
-        "Uso: `n.purge 1-100`"
-      );
-    }
-
-    await message.channel.bulkDelete(amount, true);
-
-    return message.channel.send(
-      `🧹 Se eliminaron **${amount}** mensajes.`
-    ).then(msg => {
-      setTimeout(() => msg.delete().catch(() => {}), 3000);
-    });
-  }
-
-  /* ================= BAN ================= */
-
-  if (command === "ban") {
-    if (!isStaff(message.member)) {
-      return message.reply("❌ No tienes permiso.");
-    }
-
-    const member =
-      message.mentions.members.first();
-
-    if (!member) {
-      return message.reply("Uso: `n.ban @usuario razón`");
-    }
-
-    const reason =
-      args.slice(1).join(" ") || "Sin razón especificada";
-
-    await member.ban({ reason });
-
-    await message.channel.send(
-      `🔨 ${member.user.tag} ha sido baneado.\n**Razón:** ${reason}`
-    );
-
-    return;
-  }
-
-  /* ================= KICK ================= */
-
-  if (command === "kick") {
-    if (!isStaff(message.member)) {
-      return message.reply("❌ No tienes permiso.");
-    }
-
-    const member =
-      message.mentions.members.first();
-
-    if (!member) {
-      return message.reply("Uso: `n.kick @usuario razón`");
-    }
-
-    const reason =
-      args.slice(1).join(" ") || "Sin razón especificada";
-
-    await member.kick(reason);
-
-    return message.channel.send(
-      `👢 ${member.user.tag} ha sido expulsado.\n**Razón:** ${reason}`
-    );
-  }
-
-  /* ================= MUTE ================= */
-
-  if (command === "mute") {
-    if (!isStaff(message.member)) {
-      return message.reply("❌ No tienes permiso.");
-    }
-
-    const member =
-      message.mentions.members.first();
-
-    const minutes = Number(
-      args.find(x => !x.includes("<@"))
-    );
-
-    if (!member || !minutes) {
-      return message.reply(
-        "Uso: `n.mute @usuario minutos razón`"
-      );
-    }
-
-    const reason =
-      args.slice(2).join(" ") || "Sin razón especificada";
-
-    await member.timeout(
-      minutes * 60 * 1000,
-      reason
-    );
-
-    return message.channel.send(
-      `🔇 ${member.user.tag} ha sido silenciado durante **${minutes} minutos**.`
-    );
-  }
-
-  /* ================= UNMUTE ================= */
-
-  if (command === "unmute") {
-    if (!isStaff(message.member)) {
-      return message.reply("❌ No tienes permiso.");
-    }
-
-    const member =
-      message.mentions.members.first();
-
-    if (!member) {
-      return message.reply("Uso: `n.unmute @usuario`");
-    }
-
-    await member.timeout(null);
-
-    return message.channel.send(
-      `🔊 Se quitó el silencio a ${member}.`
-    );
-  }
-
-  /* ================= WARN ================= */
-
-  if (command === "warn") {
-    if (!isStaff(message.member)) {
-      return message.reply("❌ No tienes permiso.");
-    }
-
-    const user =
-      message.mentions.users.first();
-
-    const reason =
-      args.slice(1).join(" ");
-
-    if (!user || !reason) {
-      return message.reply(
-        "Uso: `n.warn @usuario razón`"
-      );
-    }
-
-    if (!data.warns[user.id]) {
-      data.warns[user.id] = [];
-    }
-
-    data.warns[user.id].push({
-      reason,
-      moderator: message.author.id,
-      date: Date.now()
-    });
-
-    saveDB();
-
-    return message.channel.send(
-      `⚠️ ${user} recibió una advertencia.\n**Razón:** ${reason}`
-    );
-  }
-
-  /* ================= WARNINGS ================= */
-
-  if (command === "warnings") {
-    if (!isStaff(message.member)) {
-      return message.reply("❌ No tienes permiso.");
-    }
-
-    const user =
-      message.mentions.users.first();
-
-    if (!user) {
-      return message.reply(
-        "Uso: `n.warnings @usuario`"
-      );
-    }
-
-    const warnings =
-      data.warns[user.id] || [];
-
-    if (!warnings.length) {
-      return message.reply(
-        `✅ ${user} no tiene advertencias.`
-      );
-    }
-
-    const text = warnings
-      .map(
-        (w, i) =>
-          `**${i + 1}.** ${w.reason}\n👮 <@${w.moderator}> • <t:${Math.floor(w.date / 1000)}:R>`
+      member.guild,
+      data.channels.generalLogs,
+      yellowEmbed(
+        "👋 Miembro salió",
+        `👤 ${member.user.tag} ha salido del servidor.`
       )
-      .join("\n\n");
-
-    return message.reply({
-      embeds: [
-        yellowEmbed(
-          `⚠️ Advertencias de ${user.tag}`,
-          text
-        )
-      ]
-    });
-  }
-
-  /* ================= SORTEO ================= */
-
-  if (command === "sorteo") {
-    if (!message.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-      return message.reply("❌ No tienes permiso.");
-    }
-
-    const durationText = args.shift();
-    const winners = Number(args.shift());
-    const prize = args.join(" ");
-
-    if (!durationText || !winners || !prize) {
-      return message.reply(
-        "Uso: `n.sorteo 1h 1 Premio increíble`"
-      );
-    }
-
-    const duration = parseDuration(durationText);
-
-    if (!duration) {
-      return message.reply(
-        "❌ Duración inválida. Ejemplo: `10m`, `1h`, `2d`."
-      );
-    }
-
-    return createGiveaway(
-      message,
-      duration,
-      winners,
-      prize,
-      0,
-      0
     );
   }
-});
+);
 
 /* =========================================================
-   ADMIN PANEL
+   MENSAJES
 ========================================================= */
 
-async function sendAdminPanel(target) {
-  const embed = yellowEmbed(
-    "💛・NISK STUDIO | ADMIN",
-`╭・✦・──────────────・✦・╮
-        🛠️ PANEL DE ADMINISTRACIÓN
-╰・✦・──────────────・✦・╯
+client.on(
+  "messageCreate",
+  async message => {
+    if (!message.guild) return;
+    if (message.author.bot) return;
 
-Bienvenido al panel de administración de **Nisk Studio**.
+    const data =
+      guildDB(
+        message.guild.id
+      );
 
-Desde aquí puedes acceder rápidamente a las diferentes áreas del bot.
+    /* HONEYPOT */
 
-🎫・Tickets
-Configura categorías, paneles y tickets.
+    if (
+      data.honeypot.channel &&
+      message.channel.id ===
+        data.honeypot.channel
+    ) {
+      const member =
+        message.member;
 
-🛡️・Moderación
-Herramientas para mantener el servidor organizado.
+      if (
+        member &&
+        !member.user.bot &&
+        !member.permissions.has(
+          PermissionFlagsBits.Administrator
+        ) &&
+        member.id !==
+          message.guild.ownerId
+      ) {
+        try {
+          await message.delete()
+            .catch(() => {});
 
-📜・Logs
-Configura los diferentes sistemas de registros.
+          if (
+            member.bannable &&
+            message.guild.members.me &&
+            message.guild.members.me.permissions.has(
+              PermissionFlagsBits.BanMembers
+            )
+          ) {
+            data.honeypot.bans++;
 
-👋・Welcome
-Configura las bienvenidas.
+            saveDB();
 
-🔗・Invites
-Configura y consulta invitaciones.
+            await member.ban({
+              reason:
+                "Honeypot de seguridad de Nisk Studio"
+            }).catch(() => {});
 
-📈・Niveles
-Configura XP, canales y mensajes.
+            await updateHoneypotCounter(
+              message.guild
+            );
 
-👤・Autoroles
-Configura roles automáticos.
+            await sendLog(
+              message.guild,
+              data.channels.moderationLogs,
+              yellowEmbed(
+                "🍯 Honeypot activado",
+                `🚨 Una cuenta escribió en el canal Honeypot.\n\n` +
+                `👤 Usuario: **${member.user.tag}**\n` +
+                `🆔 ID: \`${member.id}\`\n` +
+                `🔨 Acción: **Ban automático**\n` +
+                `📊 Bans del Honeypot: **${data.honeypot.bans}**`
+              )
+            );
+          }
+        } catch {}
+      }
 
-🎉・Sorteos
-Gestiona los sorteos.
+      return;
+    }
 
-⚙️・Configuración
-Consulta la configuración general.
+    await addXP(message);
 
-Selecciona una sección usando los botones de abajo.`
-  );
+    if (
+      !message.content
+        .toLowerCase()
+        .startsWith(PREFIX)
+    ) {
+      return;
+    }
 
-  const row1 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("admin_tickets")
-      .setLabel("Tickets")
-      .setEmoji("🎫")
-      .setStyle(ButtonStyle.Primary),
+    const args =
+      message.content
+        .slice(PREFIX.length)
+        .trim()
+        .split(/\s+/);
 
-    new ButtonBuilder()
-      .setCustomId("admin_moderation")
-      .setLabel("Moderación")
-      .setEmoji("🛡️")
-      .setStyle(ButtonStyle.Secondary),
+    const command =
+      args
+        .shift()
+        ?.toLowerCase();
 
-    new ButtonBuilder()
-      .setCustomId("admin_logs")
-      .setLabel("Logs")
-      .setEmoji("📜")
-      .setStyle(ButtonStyle.Secondary),
+    if (!command) return;
 
-    new ButtonBuilder()
-      .setCustomId("admin_welcome")
-      .setLabel("Welcome")
-      .setEmoji("👋")
-      .setStyle(ButtonStyle.Secondary),
+    /* =====================================================
+       HELP
+    ===================================================== */
 
-    new ButtonBuilder()
-      .setCustomId("admin_invites")
-      .setLabel("Invites")
-      .setEmoji("🔗")
-      .setStyle(ButtonStyle.Secondary)
-  );
+    if (command === "help") {
+      return sendHelp(
+        message,
+        false
+      );
+    }
 
-  const row2 = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("admin_levels")
-      .setLabel("Niveles")
-      .setEmoji("📈")
-      .setStyle(ButtonStyle.Secondary),
+    /* =====================================================
+       ADMIN
+    ===================================================== */
 
-    new ButtonBuilder()
-      .setCustomId("admin_autoroles")
-      .setLabel("Autoroles")
-      .setEmoji("👤")
-      .setStyle(ButtonStyle.Secondary),
+    if (command === "admin") {
+      return sendAdminMenu(
+        message,
+        false
+      );
+    }
 
-    new ButtonBuilder()
-      .setCustomId("admin_giveaways")
-      .setLabel("Sorteos")
-      .setEmoji("🎉")
-      .setStyle(ButtonStyle.Secondary),
+    /* =====================================================
+       STAFF ROLE
+    ===================================================== */
 
-    new ButtonBuilder()
-      .setCustomId("admin_config")
-      .setLabel("Configuración")
-      .setEmoji("⚙️")
-      .setStyle(ButtonStyle.Secondary)
-  );
+    if (command === "staffrole") {
+      if (!isAdmin(message.member)) {
+        return message.reply(
+          "⛔ Solo administradores."
+        );
+      }
 
-  if (target.reply) {
-    return target.reply({
-      embeds: [embed],
-      components: [row1, row2]
-    });
+      const role =
+        message.mentions.roles.first();
+
+      if (!role) {
+        return message.reply(
+          "Uso: `n.staffrole @Rol`"
+        );
+      }
+
+      data.staffRole =
+        role.id;
+
+      saveDB();
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "🛡️ Staff configurado",
+            `El rol de Staff ahora es ${role}.\n\n` +
+            `El Staff podrá utilizar las funciones operativas de moderación y tickets, pero no podrá modificar la configuración del bot.`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       TICKET PANEL
+    ===================================================== */
+
+    if (
+      command ===
+      "ticketpanel"
+    ) {
+      if (
+        !isAdmin(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ Solo administradores."
+        );
+      }
+
+      return sendTicketPanel(
+        message.channel,
+        data
+      );
+    }
+
+    /* =====================================================
+       WELCOME
+    ===================================================== */
+
+    if (command === "welcome") {
+      if (
+        !isAdmin(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ Solo administradores."
+        );
+      }
+
+      const channel =
+        message.mentions.channels.first();
+
+      if (!channel) {
+        return message.reply(
+          "Uso: `n.welcome #canal`"
+        );
+      }
+
+      data.channels.welcome =
+        channel.id;
+
+      saveDB();
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "👋 Bienvenida configurada",
+            `El canal de bienvenida ahora es ${channel}.`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       INVITE
+    ===================================================== */
+
+    if (command === "invite") {
+      if (
+        !isAdmin(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ Solo administradores."
+        );
+      }
+
+      const channel =
+        message.mentions.channels.first();
+
+      if (!channel) {
+        return message.reply(
+          "Uso: `n.invite #canal`"
+        );
+      }
+
+      data.channels.invites =
+        channel.id;
+
+      saveDB();
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "🔗 Invitaciones configuradas",
+            `Las nuevas invitaciones se anunciarán en ${channel}.`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       INVITES CHECK
+    ===================================================== */
+
+    if (
+      command ===
+      "invitescheck"
+    ) {
+      if (
+        !isStaff(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ No tienes permisos."
+        );
+      }
+
+      const user =
+        message.mentions.users.first() ||
+        message.author;
+
+      const inviteData =
+        data.invites.users[
+          user.id
+        ] || {
+          total: 0,
+          active: 0,
+          left: 0,
+          members: []
+        };
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "🔗 Estadísticas de invitaciones",
+            `👤 Usuario: ${user}\n\n` +
+            `👥 Miembros invitados: **${inviteData.total}**\n` +
+            `🟢 Actualmente en el servidor: **${inviteData.active}**\n` +
+            `🔴 Invitados que se fueron: **${inviteData.left}**\n` +
+            `📊 Total registrado: **${inviteData.total}**`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       EMBED
+    ===================================================== */
+
+    if (command === "embed") {
+      if (
+        !isStaff(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ No tienes permisos."
+        );
+      }
+
+      const color =
+        args.shift() ||
+        "#FFD54A";
+
+      const text =
+        args.join(" ");
+
+      if (!text) {
+        return message.reply(
+          "Uso: `n.embed #FFD54A mensaje`"
+        );
+      }
+
+      const embed =
+        new EmbedBuilder()
+          .setColor(color)
+          .setDescription(text)
+          .setTimestamp()
+          .setFooter({
+            text:
+              "Nisk Studio | Programación"
+          });
+
+      const image =
+        message.attachments.first();
+
+      if (image) {
+        embed.setImage(
+          image.url
+        );
+      }
+
+      await message.channel.send({
+        embeds: [embed]
+      });
+
+      return message.delete()
+        .catch(() => {});
+    }
+
+    /* =====================================================
+       PAY
+    ===================================================== */
+
+    if (command === "pay") {
+      if (
+        !isStaff(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ No tienes permisos."
+        );
+      }
+
+      const user =
+        message.mentions.users.first();
+
+      const amount =
+        args.find(
+          x => !isNaN(
+            Number(x)
+          )
+        );
+
+      if (!user || !amount) {
+        return message.reply(
+          "Uso: `n.pay @usuario cantidad concepto`"
+        );
+      }
+
+      const concept =
+        args
+          .filter(
+            x => x !== amount
+          )
+          .join(" ");
+
+      const embed =
+        yellowEmbed(
+          "💳 Transacción registrada",
+          `👤 Usuario: ${user}\n` +
+          `💰 Cantidad: **${amount}**\n` +
+          `📝 Concepto: ${concept || "Sin concepto"}\n` +
+          `👮 Registrado por: ${message.author}`
+        );
+
+      await message.channel.send({
+        embeds: [embed]
+      });
+
+      await sendLog(
+        message.guild,
+        data.channels.transactionLogs,
+        embed
+      );
+
+      return;
+    }
+
+    /* =====================================================
+       RANK
+    ===================================================== */
+
+    if (command === "rank") {
+      const user =
+        message.mentions.users.first() ||
+        message.author;
+
+      const levelData =
+        getLevelData(
+          message.guild.id,
+          user.id
+        );
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "📈 Perfil de nivel",
+            `👤 ${user}\n\n` +
+            `🏆 Nivel: **${levelData.level}**\n` +
+            `✨ XP: **${levelData.xp}/${xpNeeded(levelData.level)}**`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       BALANCE
+    ===================================================== */
+
+    if (command === "balance") {
+      const user =
+        message.mentions.users.first() ||
+        message.author;
+
+      const account =
+        getEconomyUser(
+          message.guild.id,
+          user.id
+        );
+
+      saveDB();
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "💰 Coins Nisk",
+            `👤 Usuario: ${user}\n\n` +
+            `💰 Saldo: **${account.coins} Coins Nisk**`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       WORK
+    ===================================================== */
+
+    if (command === "work") {
+      const account =
+        getEconomyUser(
+          message.guild.id,
+          message.author.id
+        );
+
+      const cooldown =
+        30000;
+
+      const remaining =
+        cooldown -
+        (Date.now() -
+          account.lastWork);
+
+      if (remaining > 0) {
+        return message.reply(
+          `💼 Debes esperar **${formatTime(remaining)}** para volver a trabajar.`
+        );
+      }
+
+      const reward =
+        Math.floor(
+          Math.random() *
+          201
+        ) + 100;
+
+      account.coins += reward;
+      account.lastWork =
+        Date.now();
+
+      saveDB();
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "💼 Trabajo completado",
+            `👤 ${message.author}\n\n` +
+            `💰 Has ganado **${reward} Coins Nisk**.\n\n` +
+            `💳 Nuevo saldo: **${account.coins} Coins Nisk**`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       SHOP
+    ===================================================== */
+
+    if (command === "shop") {
+      return sendShop(
+        message,
+        false
+      );
+    }
+
+    /* =====================================================
+       INVENTORY
+    ===================================================== */
+
+    if (command === "inventory") {
+      return sendInventory(
+        message,
+        false
+      );
+    }
+
+    /* =====================================================
+       LEADERBOARD
+    ===================================================== */
+
+    if (
+      command ===
+      "leaderboard"
+    ) {
+      return sendLeaderboard(
+        message,
+        false
+      );
+    }
+
+    /* =====================================================
+       LUCK
+    ===================================================== */
+
+    if (command === "luck") {
+      return playLuck(
+        message,
+        false
+      );
+    }
+
+    /* =====================================================
+       PURGE
+    ===================================================== */
+
+    if (command === "purge") {
+      if (
+        !isStaff(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ No tienes permisos."
+        );
+      }
+
+      const amount =
+        parseInt(
+          args[0]
+        );
+
+      if (
+        isNaN(amount) ||
+        amount < 1 ||
+        amount > 100
+      ) {
+        return message.reply(
+          "Debes indicar una cantidad entre 1 y 100."
+        );
+      }
+
+      await message.channel.bulkDelete(
+        amount + 1,
+        true
+      );
+
+      const msg =
+        await message.channel.send({
+          embeds: [
+            yellowEmbed(
+              "🧹 Mensajes eliminados",
+              `Se eliminaron **${amount}** mensajes.\n` +
+              `👮 Acción realizada por ${message.author}.`
+            )
+          ]
+        });
+
+      setTimeout(
+        () =>
+          msg.delete()
+            .catch(() => {}),
+        5000
+      );
+
+      return;
+    }
+
+    /* =====================================================
+       BAN
+    ===================================================== */
+
+    if (command === "ban") {
+      if (
+        !isStaff(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ No tienes permisos."
+        );
+      }
+
+      const target =
+        message.mentions.members.first();
+
+      if (!target) {
+        return message.reply(
+          "Uso: `n.ban @usuario [razón]`"
+        );
+      }
+
+      if (
+        !target.bannable
+      ) {
+        return message.reply(
+          "❌ No puedo banear a ese usuario."
+        );
+      }
+
+      const reason =
+        args
+          .filter(
+            x =>
+              !x.includes(
+                target.id
+              )
+          )
+          .join(" ") ||
+        "Sin razón";
+
+      await target.ban({
+        reason
+      });
+
+      await sendLog(
+        message.guild,
+        data.channels.moderationLogs,
+        yellowEmbed(
+          "🔨 Usuario baneado",
+          `👤 Usuario: **${target.user.tag}**\n` +
+          `👮 Moderador: ${message.author}\n` +
+          `📝 Razón: ${reason}`
+        )
+      );
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "🔨 Usuario baneado",
+            `👤 ${target.user.tag}\n` +
+            `📝 Razón: ${reason}`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       KICK
+    ===================================================== */
+
+    if (command === "kick") {
+      if (
+        !isStaff(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ No tienes permisos."
+        );
+      }
+
+      const target =
+        message.mentions.members.first();
+
+      if (!target) {
+        return message.reply(
+          "Uso: `n.kick @usuario [razón]`"
+        );
+      }
+
+      if (
+        !target.kickable
+      ) {
+        return message.reply(
+          "❌ No puedo expulsar a ese usuario."
+        );
+      }
+
+      const reason =
+        args.join(" ") ||
+        "Sin razón";
+
+      await target.kick(
+        reason
+      );
+
+      await sendLog(
+        message.guild,
+        data.channels.moderationLogs,
+        yellowEmbed(
+          "👢 Usuario expulsado",
+          `👤 Usuario: **${target.user.tag}**\n` +
+          `👮 Moderador: ${message.author}\n` +
+          `📝 Razón: ${reason}`
+        )
+      );
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "👢 Usuario expulsado",
+            `👤 ${target.user.tag}\n` +
+            `📝 Razón: ${reason}`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       MUTE
+    ===================================================== */
+
+    if (command === "mute") {
+      if (
+        !isStaff(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ No tienes permisos."
+        );
+      }
+
+      const target =
+        message.mentions.members.first();
+
+      const minutes =
+        Number(
+          args.find(
+            x =>
+              !isNaN(
+                Number(x)
+              )
+          )
+        );
+
+      if (
+        !target ||
+        !minutes ||
+        minutes < 1
+      ) {
+        return message.reply(
+          "Uso: `n.mute @usuario minutos [razón]`"
+        );
+      }
+
+      if (
+        !target.moderatable
+      ) {
+        return message.reply(
+          "❌ No puedo aplicar timeout a ese usuario."
+        );
+      }
+
+      const reason =
+        args
+          .filter(
+            x =>
+              !/^\d+$/.test(x)
+          )
+          .join(" ") ||
+        "Sin razón";
+
+      await target.timeout(
+        minutes * 60000,
+        reason
+      );
+
+      await sendLog(
+        message.guild,
+        data.channels.moderationLogs,
+        yellowEmbed(
+          "🔇 Timeout aplicado",
+          `👤 Usuario: **${target.user.tag}**\n` +
+          `⏱️ Duración: **${minutes} minutos**\n` +
+          `👮 Moderador: ${message.author}\n` +
+          `📝 Razón: ${reason}`
+        )
+      );
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "🔇 Usuario silenciado",
+            `👤 ${target.user.tag}\n` +
+            `⏱️ Duración: **${minutes} minutos**`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       UNMUTE
+    ===================================================== */
+
+    if (command === "unmute") {
+      if (
+        !isStaff(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ No tienes permisos."
+        );
+      }
+
+      const target =
+        message.mentions.members.first();
+
+      if (!target) {
+        return message.reply(
+          "Uso: `n.unmute @usuario`"
+        );
+      }
+
+      await target.timeout(
+        null
+      );
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "🔊 Timeout retirado",
+            `👤 ${target}\n\n` +
+            `El timeout ha sido retirado correctamente.`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       WARN
+    ===================================================== */
+
+    if (command === "warn") {
+      if (
+        !isStaff(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ No tienes permisos."
+        );
+      }
+
+      const target =
+        message.mentions.users.first();
+
+      if (!target) {
+        return message.reply(
+          "Uso: `n.warn @usuario razón`"
+        );
+      }
+
+      const reason =
+        args
+          .filter(
+            x =>
+              !x.includes(
+                target.id
+              )
+          )
+          .join(" ") ||
+        "Sin razón";
+
+      data.warns[target.id] ||=
+        [];
+
+      data.warns[target.id].push({
+        reason,
+        moderator:
+          message.author.id,
+        date: Date.now()
+      });
+
+      saveDB();
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "⚠️ Advertencia",
+            `👤 Usuario: ${target}\n` +
+            `📝 Razón: ${reason}\n` +
+            `👮 Moderador: ${message.author}`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       WARNINGS
+    ===================================================== */
+
+    if (
+      command ===
+      "warnings"
+    ) {
+      if (
+        !isStaff(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ No tienes permisos."
+        );
+      }
+
+      const user =
+        message.mentions.users.first() ||
+        message.author;
+
+      const warns =
+        data.warns[user.id] ||
+        [];
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "📋 Advertencias",
+            warns.length
+              ? warns
+                  .map(
+                    (w, i) =>
+                      `**${i + 1}.** ${w.reason}\n👮 <@${w.moderator}>`
+                  )
+                  .join(
+                    "\n\n"
+                  )
+              : `${user} no tiene advertencias registradas.`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       INTERACCIONES
+    ===================================================== */
+
+    const interactions = {
+      hug: {
+        title: "🤗 ABRAZO",
+        text:
+          "le ha dado un gran abrazo a",
+        extra:
+          "Parece que alguien necesitaba un poquito de buena energía por aquí. ✨"
+      },
+
+      highfive: {
+        title: "🙌 HIGH FIVE",
+        text:
+          "le ha chocado los cinco a",
+        extra:
+          "¡Esa energía se siente hasta aquí! ⚡"
+      },
+
+      poke: {
+        title: "👉 POKE",
+        text:
+          "ha dado un pequeño toque a",
+        extra:
+          "¡Ey! ¿Qué está pasando por aquí? 👀"
+      },
+
+      clap: {
+        title: "👏 APLAUSO",
+        text:
+          "le ha dado un aplauso a",
+        extra:
+          "¡Momento de reconocer el esfuerzo! ✨"
+      },
+
+      wave: {
+        title: "👋 SALUDO",
+        text:
+          "ha saludado a",
+        extra:
+          "¡Qué bueno verte por Nisk Studio! 💛"
+      },
+
+      gift: {
+        title: "🎁 REGALO",
+        text:
+          "le ha enviado un regalo simbólico a",
+        extra:
+          "¡Un pequeño detalle para alegrar el día! 🎀"
+      },
+
+      cookie: {
+        title: "🍪 GALLETA",
+        text:
+          "le ha dado una galleta a",
+        extra:
+          "¡Una galletita nunca viene mal! 🍪"
+      },
+
+      compliment: {
+        title: "✨ CUMPLIDO",
+        text:
+          "le ha dejado un cumplido a",
+        extra:
+          "¡Las buenas palabras siempre suman! 💛"
+      },
+
+      laugh: {
+        title: "😂 RISA",
+        text:
+          "se ha reído con",
+        extra:
+          "¡La diversión continúa en Nisk Studio! 😂"
+      },
+
+      challenge: {
+        title: "⚔️ RETO",
+        text:
+          "ha retado a",
+        extra:
+          "¡Que empiece el desafío! 🔥"
+      }
+    };
+
+    if (
+      interactions[command]
+    ) {
+      const target =
+        message.mentions.users.first();
+
+      if (!target) {
+        return message.reply(
+          `Uso: \`n.${command} @usuario\``
+        );
+      }
+
+      const info =
+        interactions[command];
+
+      return message.channel.send({
+        embeds: [
+          yellowEmbed(
+            `╭・✦・──────────────・✦・╮\n             ${info.title}\n╰・✦・──────────────・✦・╯`,
+            `💛 ${message.author} ${info.text} ${target}.\n\n` +
+            `${info.extra}\n\n` +
+            `🤝 **Nisk Studio | Interacciones**`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       SORTEO
+    ===================================================== */
+
+    if (
+      command ===
+      "sorteo"
+    ) {
+      return createGiveawayPrefix(
+        message,
+        args,
+        data
+      );
+    }
+
+    /* =====================================================
+       SHOP BUY
+    ===================================================== */
+
+    if (
+      command ===
+      "buy"
+    ) {
+      return buyShopItem(
+        message,
+        args[0],
+        false
+      );
+    }
+
+    /* =====================================================
+       MODERACIÓN EXTRA
+    ===================================================== */
+
+    if (
+      command ===
+      "lock"
+    ) {
+      if (
+        !isStaff(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ No tienes permisos."
+        );
+      }
+
+      await message.channel.permissionOverwrites.edit(
+        message.guild.roles.everyone,
+        {
+          SendMessages: false
+        }
+      );
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "🔒 Canal bloqueado",
+            `Este canal ha sido bloqueado por ${message.author}.`
+          )
+        ]
+      });
+    }
+
+    if (
+      command ===
+      "unlock"
+    ) {
+      if (
+        !isStaff(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ No tienes permisos."
+        );
+      }
+
+      await message.channel.permissionOverwrites.edit(
+        message.guild.roles.everyone,
+        {
+          SendMessages: null
+        }
+      );
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "🔓 Canal desbloqueado",
+            `Este canal vuelve a estar disponible.`
+          )
+        ]
+      });
+    }
+
+    if (
+      command ===
+      "slowmode"
+    ) {
+      if (
+        !isStaff(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ No tienes permisos."
+        );
+      }
+
+      const seconds =
+        Number(args[0]);
+
+      if (
+        isNaN(seconds) ||
+        seconds < 0 ||
+        seconds > 21600
+      ) {
+        return message.reply(
+          "Uso: `n.slowmode segundos` (0-21600)"
+        );
+      }
+
+      await message.channel.setRateLimitPerUser(
+        seconds
+      );
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "🐌 Slowmode",
+            `El slowmode ha sido establecido en **${seconds} segundos**.`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       AUTOROLE ADD/REMOVE
+    ===================================================== */
+
+    if (
+      command ===
+      "autoroleadd"
+    ) {
+      if (
+        !isAdmin(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ Solo administradores."
+        );
+      }
+
+      const role =
+        message.mentions.roles.first();
+
+      if (!role) {
+        return message.reply(
+          "Uso: `n.autoroleadd @rol`"
+        );
+      }
+
+      if (
+        !data.autoroles.includes(
+          role.id
+        )
+      ) {
+        data.autoroles.push(
+          role.id
+        );
+      }
+
+      saveDB();
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "🎭 Autorol añadido",
+            `${role} será entregado automáticamente a los nuevos miembros.`
+          )
+        ]
+      });
+    }
+
+    if (
+      command ===
+      "autoroleremove"
+    ) {
+      if (
+        !isAdmin(
+          message.member
+        )
+      ) {
+        return message.reply(
+          "⛔ Solo administradores."
+        );
+      }
+
+      const role =
+        message.mentions.roles.first();
+
+      if (!role) {
+        return message.reply(
+          "Uso: `n.autoroleremove @rol`"
+        );
+      }
+
+      data.autoroles =
+        data.autoroles.filter(
+          id =>
+            id !== role.id
+        );
+
+      saveDB();
+
+      return message.reply({
+        embeds: [
+          yellowEmbed(
+            "🗑️ Autorol eliminado",
+            `${role} ya no será entregado automáticamente.`
+          )
+        ]
+      });
+    }
+  }
+);
+
+/* =========================================================
+   FUNCIONES DE MENÚS
+========================================================= */
+
+function getAdminMenu() {
+  const menu =
+    new StringSelectMenuBuilder()
+      .setCustomId(
+        "admin_menu"
+      )
+      .setPlaceholder(
+        "⚙️ Selecciona una sección"
+      )
+      .addOptions([
+        {
+          label: "Tickets",
+          value: "tickets",
+          emoji: "🎫"
+        },
+        {
+          label: "Niveles",
+          value: "levels",
+          emoji: "📈"
+        },
+        {
+          label: "Logs",
+          value: "logs",
+          emoji: "📋"
+        },
+        {
+          label: "Bienvenida",
+          value: "welcome",
+          emoji: "👋"
+        },
+        {
+          label: "Invitaciones",
+          value: "invites",
+          emoji: "🔗"
+        },
+        {
+          label: "Autoroles",
+          value: "autoroles",
+          emoji: "🎭"
+        },
+        {
+          label: "Economía",
+          value: "economy",
+          emoji: "💰"
+        },
+        {
+          label: "Sorteos",
+          value: "giveaways",
+          emoji: "🎉"
+        },
+        {
+          label: "Moderación",
+          value: "moderation",
+          emoji: "🛡️"
+        },
+        {
+          label: "Seguridad",
+          value: "security",
+          emoji: "🍯"
+        },
+        {
+          label: "Configuración",
+          value: "config",
+          emoji: "⚙️"
+        }
+      ]);
+
+  return menu;
+}
+
+function getHelpMenu() {
+  return new StringSelectMenuBuilder()
+    .setCustomId(
+      "help_menu"
+    )
+    .setPlaceholder(
+      "📚 Selecciona una categoría"
+    )
+    .addOptions([
+      {
+        label: "Economía",
+        value: "economy",
+        emoji: "💰"
+      },
+      {
+        label: "Niveles",
+        value: "levels",
+        emoji: "📈"
+      },
+      {
+        label: "Diversión",
+        value: "fun",
+        emoji: "🍀"
+      },
+      {
+        label: "Interacción",
+        value: "interaction",
+        emoji: "🤝"
+      },
+      {
+        label: "Utilidades",
+        value: "utility",
+        emoji: "👤"
+      },
+      {
+        label: "Información",
+        value: "info",
+        emoji: "ℹ️"
+      }
+    ]);
+}
+
+async function sendAdminMenu(
+  source,
+  slash = true
+) {
+  const member =
+    slash
+      ? source.member
+      : source.member;
+
+  if (!isAdmin(member)) {
+    if (slash) {
+      return source.reply({
+        content:
+          "⛔ Solo administradores.",
+        ephemeral: true
+      });
+    }
+
+    return source.reply(
+      "⛔ Solo administradores."
+    );
   }
 
-  return target.channel.send({
+  const embed =
+    yellowEmbed(
+      "╭・✦・──────────────・✦・╮\n        ⚙️ PANEL ADMIN\n╰・✦・──────────────・✦・╯",
+      `Bienvenido al panel de administración de **Nisk Studio**.\n\n` +
+      `Desde aquí puedes consultar y administrar las diferentes áreas del bot.\n\n` +
+      `🔐 **Acceso:** Administradores\n` +
+      `🛡️ El Staff operativo no puede modificar esta configuración.\n\n` +
+      `Selecciona una sección en el menú inferior.`
+    );
+
+  const payload = {
     embeds: [embed],
-    components: [row1, row2]
-  });
+    components: [
+      new ActionRowBuilder().addComponents(
+        getAdminMenu()
+      )
+    ]
+  };
+
+  if (slash) {
+    return source.reply(
+      payload
+    );
+  }
+
+  return source.reply(
+    payload
+  );
+}
+
+async function sendHelp(
+  source,
+  slash = true
+) {
+  const embed =
+    yellowEmbed(
+      "╭・✦・──────────────・✦・╮\n           📚 NISK HELP\n╰・✦・──────────────・✦・╯",
+      `Bienvenido al centro de ayuda de **Nisk Studio**.\n\n` +
+      `Aquí encontrarás los comandos disponibles para los miembros.\n\n` +
+      `Selecciona una categoría para consultar sus comandos.\n\n` +
+      `💛 **Nisk Studio | Programación**`
+    );
+
+  const payload = {
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder().addComponents(
+        getHelpMenu()
+      )
+    ]
+  };
+
+  return source.reply(
+    payload
+  );
 }
 
 /* =========================================================
    TICKET PANEL
 ========================================================= */
 
-async function sendTicketPanel(channel) {
-  const guild = channel.guild;
-  const data = guildDB(guild.id);
-
-  const embed = new EmbedBuilder()
-    .setColor(COLOR)
-    .setTitle("💛・NISK STUDIO | SOPORTE")
-    .setDescription(
-`╭・✦・──────────────・✦・╮
-        🎫 CENTRO DE SOPORTE
-╰・✦・──────────────・✦・╯
-
-¿Necesitas ayuda?
-
-Selecciona abajo la categoría que mejor describa tu solicitud.
-
-Nuestro equipo revisará tu ticket lo antes posible.
-
-📌 **Antes de abrir un ticket:**
-• Explica claramente tu problema.
-• Añade capturas si son necesarias.
-• No abras tickets duplicados.
-• Mantén el respeto hacia el equipo.
-• Utiliza cada categoría correctamente.
-
-💛 Gracias por formar parte de Nisk Studio.
-
-Selecciona una categoría para comenzar.`
+async function sendTicketPanel(
+  channel,
+  data,
+  interaction = null
+) {
+  const options =
+    Object.entries(
+      data.ticketTypes
     )
-    .setFooter({
-      text: "Nisk Studio | Sistema de Tickets"
-    })
-    .setTimestamp();
-
-  const options = data.ticketTypes
-    .slice(0, 25)
-    .map((category, index) => ({
-      label: category.name.slice(0, 100),
-      value: `ticket_category_${index}`,
-      description: `Abrir un ticket de ${category.name}`.slice(0, 100),
-      emoji: "🎫"
-    }));
+      .slice(0, 25)
+      .map(
+        ([key, type]) => ({
+          label:
+            type.name.slice(
+              0,
+              100
+            ),
+          description:
+            `Abrir un ticket de ${type.name}`.slice(
+              0,
+              100
+            ),
+          value: key,
+          emoji: "🎫"
+        })
+      );
 
   if (!options.length) {
-    return channel.send({
-      embeds: [
-        yellowEmbed(
-          "❌ Sin categorías",
-          "No hay categorías de tickets configuradas."
-        )
-      ]
-    });
-  }
+    if (interaction) {
+      return interaction.reply({
+        content:
+          "❌ No hay categorías configuradas.",
+        ephemeral: true
+      });
+    }
 
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId("ticket_category_select")
-    .setPlaceholder("🎫 Selecciona una categoría")
-    .addOptions(options);
-
-  const row = new ActionRowBuilder().addComponents(menu);
-
-  return channel.send({
-    embeds: [embed],
-    components: [row]
-  });
-}
-
-/* =========================================================
-   CREAR FORMULARIO DE TICKET
-========================================================= */
-
-async function showTicketModal(interaction, category, index) {
-  const questions = category.questions.slice(0, 5);
-
-  const modal = new ModalBuilder()
-    .setCustomId(`ticket_modal_${index}`)
-    .setTitle(`🎫 ${category.name}`.slice(0, 45));
-
-  questions.forEach((question, i) => {
-    const input = new TextInputBuilder()
-      .setCustomId(`question_${i}`)
-      .setLabel(question.slice(0, 45))
-      .setStyle(TextInputStyle.Paragraph)
-      .setPlaceholder("Escribe tu respuesta...")
-      .setRequired(true)
-      .setMaxLength(1000);
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(input)
+    return channel.send(
+      "❌ No hay categorías configuradas."
     );
-  });
-
-  await interaction.showModal(modal);
-}
-
-/* =========================================================
-   CREAR TICKET
-========================================================= */
-
-async function createTicket(interaction, category, answers) {
-  const guild = interaction.guild;
-  const data = guildDB(guild.id);
-
-  const existing = Object.values(data.tickets).find(
-    ticket =>
-      ticket.userId === interaction.user.id &&
-      ticket.closed === false
-  );
-
-  if (existing) {
-    return interaction.reply({
-      content: `❌ Ya tienes un ticket abierto: <#${existing.channelId}>`,
-      ephemeral: true
-    });
   }
 
-  const ticketId = getTicketId();
+  const menu =
+    new StringSelectMenuBuilder()
+      .setCustomId(
+        "ticket_type"
+      )
+      .setPlaceholder(
+        "🎫 Selecciona el tipo de ticket"
+      )
+      .addOptions(
+        options
+      );
 
-  const channelName =
-    `${cleanName(category.name)}-${cleanName(interaction.user.username)}`
-      .slice(0, 90);
-
-  const permissionOverwrites = [
-    {
-      id: guild.id,
-      deny: [PermissionFlagsBits.ViewChannel]
-    },
-    {
-      id: interaction.user.id,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.AttachFiles
-      ]
-    }
-  ];
-
-  if (data.staffRole) {
-    permissionOverwrites.push({
-      id: data.staffRole,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.AttachFiles
-      ]
-    });
-  }
-
-  const channelOptions = {
-    name: channelName,
-    type: ChannelType.GuildText,
-    permissionOverwrites
-  };
-
-  if (data.ticketCategory) {
-    const parent = guild.channels.cache.get(data.ticketCategory);
-
-    if (parent && parent.type === ChannelType.GuildCategory) {
-      channelOptions.parent = parent.id;
-    }
-  }
-
-  const channel = await guild.channels.create(channelOptions);
-
-  data.tickets[ticketId] = {
-    id: ticketId,
-    channelId: channel.id,
-    userId: interaction.user.id,
-    category: category.name,
-    answers,
-    createdAt: Date.now(),
-    claimedBy: null,
-    closed: false
-  };
-
-  saveDB();
-
-  const answersText = answers
-    .map(
-      item =>
-        `**❓ ${item.question}**\n💬 ${item.answer}`
-    )
-    .join("\n\n");
-
-  const embed = new EmbedBuilder()
-    .setColor(COLOR)
-    .setTitle(`💛・NISK STUDIO | ${category.name.toUpperCase()}`)
-    .setDescription(
-`╭・✦・──────────────・✦・╮
-        🎫 TICKET CREADO
-╰・✦・──────────────・✦・╯
-
-👋 ¡Hola ${interaction.user}!
-
-Gracias por contactar con el equipo de **Nisk Studio**.
-
-Un miembro del staff revisará tu solicitud lo antes posible.
-
-╭・📋・ INFORMACIÓN
-│
-│ 👤 Usuario: ${interaction.user}
-│ 🏷️ Categoría: **${category.name}**
-│ 🟢 Estado: **Abierto**
-│ 🕐 Creado: <t:${Math.floor(Date.now() / 1000)}:F>
-│
-╰・────────────────────・╯
-
-### 📝 Información proporcionada
-
-${answersText}
-
-### 📌 Recomendaciones
-
-• Explica cualquier información adicional que sea necesaria.
-• Puedes enviar imágenes o archivos.
-• Evita hacer spam o mencionar constantemente al staff.
-• Mantén siempre el respeto.
-
-💛 **El equipo de Nisk Studio estará contigo durante el proceso.**`
-    )
-    .setFooter({
-      text: `Ticket #${ticketId} • Nisk Studio`
-    })
-    .setTimestamp();
-
-  const buttons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`ticket_claim_${ticketId}`)
-      .setLabel("Reclamar")
-      .setEmoji("👤")
-      .setStyle(ButtonStyle.Primary),
-
-    new ButtonBuilder()
-      .setCustomId(`ticket_notify_${ticketId}`)
-      .setLabel("Notificar staff")
-      .setEmoji("🔔")
-      .setStyle(ButtonStyle.Secondary),
-
-    new ButtonBuilder()
-      .setCustomId(`ticket_close_${ticketId}`)
-      .setLabel("Cerrar")
-      .setEmoji("🔒")
-      .setStyle(ButtonStyle.Danger)
-  );
-
-  await channel.send({
-    content: `${interaction.user}${data.staffRole ? ` <@&${data.staffRole}>` : ""}`,
-    embeds: [embed],
-    components: [buttons]
-  });
-
-  await interaction.reply({
-    content: `✅ Tu ticket ha sido creado: ${channel}`,
-    ephemeral: true
-  });
-
-  await sendLog(
-    guild,
-    "ticketLogs",
-    yellowEmbed(
-      "🎫 Ticket creado",
-      `**Usuario:** ${interaction.user}\n**Categoría:** ${category.name}\n**Canal:** ${channel}\n**ID:** \`${ticketId}\``
-    )
-  );
-}
-
-/* =========================================================
-   CERRAR TICKET
-========================================================= */
-
-async function closeTicket(interaction, ticketId, reason) {
-  const data = guildDB(interaction.guild.id);
-  const ticket = data.tickets[ticketId];
-
-  if (!ticket) {
-    return interaction.reply({
-      content: "❌ No se encontró este ticket.",
-      ephemeral: true
-    });
-  }
-
-  if (ticket.closed) {
-    return interaction.reply({
-      content: "❌ Este ticket ya está cerrado.",
-      ephemeral: true
-    });
-  }
-
-  ticket.closed = true;
-  ticket.closedAt = Date.now();
-  ticket.closedBy = interaction.user.id;
-  ticket.closeReason = reason;
-
-  saveDB();
-
-  const channel = interaction.channel;
-
-  await channel.permissionOverwrites.edit(
-    ticket.userId,
-    {
-      SendMessages: false
-    }
-  ).catch(() => {});
-
-  const ratingRow = new ActionRowBuilder().addComponents(
-    [1, 2, 3, 4, 5].map(number =>
-      new ButtonBuilder()
-        .setCustomId(`ticket_rating_${ticketId}_${number}`)
-        .setLabel(`${number}`)
-        .setEmoji("⭐")
-        .setStyle(ButtonStyle.Secondary)
-    )
-  );
-
-  await interaction.reply({
+  const payload = {
     embeds: [
       yellowEmbed(
-        "🔒 Ticket cerrado",
-        `Este ticket ha sido cerrado por ${interaction.user}.
-
-**Motivo:**
-${reason}
-
-⭐ Si deseas valorar la atención recibida, selecciona una puntuación de 1 a 5.`
+        "╭・✦・──────────────・✦・╮\n             🎫 TICKETS\n╰・✦・──────────────・✦・╯",
+        `¿Necesitas ayuda con algo?\n\n` +
+        `Selecciona la categoría que mejor describa tu solicitud.\n\n` +
+        `📝 Antes de crear el ticket tendrás que responder algunas preguntas.\n` +
+        `👮 Nuestro equipo revisará tu solicitud.\n` +
+        `💛 Gracias por utilizar el sistema de soporte.`
       )
     ],
-    components: [ratingRow]
-  });
-
-  await sendLog(
-    interaction.guild,
-    "ticketLogs",
-    yellowEmbed(
-      "🔒 Ticket cerrado",
-      `**Ticket:** \`${ticketId}\`
-**Usuario:** <@${ticket.userId}>
-**Cerrado por:** ${interaction.user}
-**Motivo:** ${reason}
-**Duración:** ${formatDuration(ticket.closedAt - ticket.createdAt)}`
-    )
-  );
-
-  setTimeout(async () => {
-    try {
-      await channel.delete();
-    } catch {}
-  }, 60000);
-}
-
-/* =========================================================
-   RATING
-========================================================= */
-
-async function rateTicket(interaction, ticketId, rating) {
-  const data = guildDB(interaction.guild.id);
-  const ticket = data.tickets[ticketId];
-
-  if (!ticket) {
-    return interaction.reply({
-      content: "❌ Ticket no encontrado.",
-      ephemeral: true
-    });
-  }
-
-  if (interaction.user.id !== ticket.userId) {
-    return interaction.reply({
-      content: "❌ Solo el creador del ticket puede valorarlo.",
-      ephemeral: true
-    });
-  }
-
-  if (ticket.rating) {
-    return interaction.reply({
-      content: "❌ Ya has valorado este ticket.",
-      ephemeral: true
-    });
-  }
-
-  ticket.rating = rating;
-  ticket.ratedAt = Date.now();
-
-  saveDB();
-
-  await interaction.update({
-    embeds: [
-      yellowEmbed(
-        "⭐ Valoración recibida",
-        `¡Gracias por valorar la atención con **${rating}/5 ⭐**!\n\nTu opinión ayuda a Nisk Studio a mejorar. 💛`
+    components: [
+      new ActionRowBuilder().addComponents(
+        menu
       )
-    ],
-    components: []
-  });
+    ]
+  };
 
-  await sendLog(
-    interaction.guild,
-    "ticketLogs",
-    yellowEmbed(
-      "⭐ Nueva valoración",
-      `**Usuario:** <@${ticket.userId}>
-**Categoría:** ${ticket.category}
-**Valoración:** ${rating}/5 ⭐
-**Ticket:** \`${ticketId}\``
-    )
+  if (interaction) {
+    return interaction.reply(
+      payload
+    );
+  }
+
+  return channel.send(
+    payload
   );
 }
 
 /* =========================================================
-   GIVEAWAYS
+   SHOP
 ========================================================= */
 
-function parseDuration(text) {
-  const match = /^(\d+)(s|m|h|d|w)$/i.exec(text);
-
-  if (!match) return null;
-
-  const value = Number(match[1]);
-  const unit = match[2].toLowerCase();
-
-  const multipliers = {
-    s: 1000,
-    m: 60 * 1000,
-    h: 60 * 60 * 1000,
-    d: 24 * 60 * 60 * 1000,
-    w: 7 * 24 * 60 * 60 * 1000
-  };
-
-  return value * multipliers[unit];
-}
-
-async function createGiveaway(
-  message,
-  duration,
-  winners,
-  prize,
-  inviteRequirement = 0,
-  levelRequirement = 0
-) {
-  const data = guildDB(message.guild.id);
-
-  const id = Math.random()
-    .toString(36)
-    .slice(2, 8)
-    .toUpperCase();
-
-  const endAt = Date.now() + duration;
-
-  const embed = new EmbedBuilder()
-    .setColor(COLOR)
-    .setTitle("🎉・SORTEO")
-    .setDescription(
-`╭・✦・──────────────・✦・╮
-          🎁 ${prize}
-╰・✦・──────────────・✦・╯
-
-🏆 **Ganadores:** ${winners}
-⏰ **Finaliza:** <t:${Math.floor(endAt / 1000)}:R>
-🆔 **Sorteo:** \`${id}\`
-
-### 📋 Requisitos
-
-${inviteRequirement > 0 ? `🔗 Invitaciones mínimas: **${inviteRequirement}**\n` : ""}${levelRequirement > 0 ? `📈 Nivel mínimo: **${levelRequirement}**\n` : ""}${inviteRequirement === 0 && levelRequirement === 0 ? "💛 No hay requisitos adicionales." : ""}
-
-Pulsa el botón **🎉 Participar** para entrar.
-
-¡Mucha suerte! 💛`
-    )
-    .setFooter({
-      text: "Nisk Studio | Sorteos"
-    })
-    .setTimestamp(endAt);
-
-  const button = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`giveaway_join_${id}`)
-      .setLabel("Participar")
-      .setEmoji("🎉")
-      .setStyle(ButtonStyle.Primary)
-  );
-
-  const sent = await message.channel.send({
-    embeds: [embed],
-    components: [button]
-  });
-
-  data.giveaways[id] = {
-    id,
-    channelId: message.channel.id,
-    messageId: sent.id,
-    prize,
-    winners,
-    endAt,
-    inviteRequirement,
-    levelRequirement,
-    participants: [],
-    ended: false,
-    creator: message.author.id
-  };
-
-  saveDB();
-
-  setTimeout(() => finishGiveaway(message.guild.id, id), duration);
-
-  return;
-}
-
-async function finishGiveaway(guildId, giveawayId) {
-  const guild = client.guilds.cache.get(guildId);
-
-  if (!guild) return;
-
-  const data = guildDB(guildId);
-  const giveaway = data.giveaways[giveawayId];
-
-  if (!giveaway || giveaway.ended) return;
-
-  giveaway.ended = true;
-
-  const channel = guild.channels.cache.get(giveaway.channelId);
-
-  if (!channel) {
-    saveDB();
+function defaultShop(data) {
+  if (
+    Object.keys(data.shop).length
+  ) {
     return;
   }
 
-  let participants = giveaway.participants
-    .map(id => guild.members.cache.get(id))
-    .filter(Boolean);
+  data.shop = {
+    "rol-premium": {
+      name: "Rol Premium",
+      description:
+        "Un rol especial de la comunidad.",
+      price: 1000,
+      roleId: null
+    },
 
-  participants = participants.filter(member => {
-    const levelData = getLevelData(guild, member.id);
+    "rol-vip": {
+      name: "Rol VIP",
+      description:
+        "Un rol destacado para miembros.",
+      price: 2500,
+      roleId: null
+    }
+  };
+}
 
-    const inviteData =
-      data.invites.users[member.id] || {
-        total: 0
-      };
-
-    return (
-      inviteData.total >= giveaway.inviteRequirement &&
-      levelData.level >= giveaway.levelRequirement
+async function sendShop(
+  source,
+  slash = true
+) {
+  const data =
+    guildDB(
+      source.guild.id
     );
+
+  defaultShop(data);
+  saveDB();
+
+  const entries =
+    Object.entries(
+      data.shop
+    );
+
+  const description =
+    entries.length
+      ? entries
+          .map(
+            ([id, item]) =>
+              `### 🛍️ ${item.name}\n` +
+              `📝 ${item.description}\n` +
+              `💰 Precio: **${item.price} Coins Nisk**\n` +
+              `🆔 \`${id}\``
+          )
+          .join("\n\n")
+      : "La tienda está vacía.";
+
+  const embed =
+    yellowEmbed(
+      "╭・✦・──────────────・✦・╮\n             🛍️ TIENDA\n╰・✦・──────────────・✦・╯",
+      `${description}\n\n` +
+      `💡 Compra un artículo con \`/buy\` o \`n.buy\`.`
+    );
+
+  if (slash) {
+    return source.reply({
+      embeds: [embed]
+    });
+  }
+
+  return source.reply({
+    embeds: [embed]
   });
+}
 
-  const winners = [];
-
-  while (
-    winners.length < giveaway.winners &&
-    participants.length > 0
-  ) {
-    const index = Math.floor(
-      Math.random() * participants.length
+async function sendInventory(
+  source,
+  slash = true
+) {
+  const data =
+    guildDB(
+      source.guild.id
     );
 
-    winners.push(
-      participants.splice(index, 1)[0]
+  const user =
+    source.user ||
+    source.author;
+
+  const account =
+    getEconomyUser(
+      source.guild.id,
+      user.id
+    );
+
+  account.inventory ||=
+    [];
+
+  const text =
+    account.inventory.length
+      ? account.inventory
+          .map(
+            id =>
+              `• \`${id}\``
+          )
+          .join("\n")
+      : "Tu inventario está vacío.";
+
+  const embed =
+    yellowEmbed(
+      "🎒 Inventario",
+      `👤 ${user}\n\n` +
+      `${text}`
+    );
+
+  return source.reply({
+    embeds: [embed]
+  });
+}
+
+async function sendLeaderboard(
+  source,
+  slash = true
+) {
+  const data =
+    guildDB(
+      source.guild.id
+    );
+
+  const sorted =
+    Object.entries(
+      data.economy
+    )
+      .sort(
+        (a, b) =>
+          (b[1].coins || 0) -
+          (a[1].coins || 0)
+      )
+      .slice(0, 10);
+
+  if (!sorted.length) {
+    return source.reply({
+      embeds: [
+        yellowEmbed(
+          "🏆 Leaderboard",
+          "Todavía no hay datos de economía."
+        )
+      ]
+    });
+  }
+
+  const lines = [];
+
+  for (
+    let i = 0;
+    i < sorted.length;
+    i++
+  ) {
+    const [
+      userId,
+      account
+    ] = sorted[i];
+
+    lines.push(
+      `**${i + 1}.** <@${userId}> — **${account.coins || 0} Coins Nisk**`
     );
   }
 
-  const winnerText = winners.length
-    ? winners.map(member => member.toString()).join(", ")
-    : "No hubo ganadores.";
-
-  await channel.send({
+  return source.reply({
     embeds: [
       yellowEmbed(
-        "🎉・SORTEO FINALIZADO",
-        `### 🎁 Premio
-**${giveaway.prize}**
-
-### 🏆 Ganador(es)
-${winnerText}
-
-¡Felicidades! 💛`
+        "🏆 TOP 10 — COINS NISK",
+        lines.join("\n")
       )
     ]
   });
+}
 
-  const oldMessage = await channel.messages
-    .fetch(giveaway.messageId)
-    .catch(() => null);
+async function buyShopItem(
+  source,
+  itemId,
+  slash = true
+) {
+  const data =
+    guildDB(
+      source.guild.id
+    );
 
-  if (oldMessage) {
-    await oldMessage.edit({
-      components: []
-    }).catch(() => {});
+  defaultShop(data);
+
+  const user =
+    source.user ||
+    source.author;
+
+  const item =
+    data.shop[itemId];
+
+  if (!item) {
+    return source.reply({
+      content:
+        "❌ Ese artículo no existe.",
+      ephemeral: true
+    });
   }
+
+  const account =
+    getEconomyUser(
+      source.guild.id,
+      user.id
+    );
+
+  account.inventory ||=
+    [];
+
+  if (
+    account.coins <
+    item.price
+  ) {
+    return source.reply({
+      content:
+        `❌ Necesitas **${item.price} Coins Nisk** para comprar este artículo.`,
+      ephemeral: true
+    });
+  }
+
+  account.coins -=
+    item.price;
+
+  account.inventory.push(
+    itemId
+  );
 
   saveDB();
-}
 
-/* =========================================================
-   RANK
-========================================================= */
+  if (
+    item.roleId
+  ) {
+    const member =
+      await source.guild.members
+        .fetch(user.id)
+        .catch(() => null);
 
-async function sendRank(target, user) {
-  const guild = target.guild;
-  const data = guildDB(guild.id);
+    const role =
+      source.guild.roles.cache.get(
+        item.roleId
+      );
 
-  const levelData = getLevelData(guild, user.id);
-
-  const needed = xpNeeded(levelData.level);
-
-  const embed = yellowEmbed(
-    "📈・NISK STUDIO | NIVEL",
-    `👤 **Usuario:** ${user}
-
-🏆 **Nivel:** ${levelData.level}
-
-✨ **XP:** ${levelData.xp}/${needed}
-
-📊 **Progreso:** ${Math.floor(
-      (levelData.xp / needed) * 100
-    )}%`
-  );
-
-  if (target.reply) {
-    return target.reply({
-      embeds: [embed]
-    });
+    if (
+      member &&
+      role
+    ) {
+      await member.roles
+        .add(role)
+        .catch(() => {});
+    }
   }
 
-  return target.channel.send({
-    embeds: [embed]
+  return source.reply({
+    embeds: [
+      yellowEmbed(
+        "🛍️ Compra realizada",
+        `👤 ${user}\n\n` +
+        `📦 Artículo: **${item.name}**\n` +
+        `💰 Precio: **${item.price} Coins Nisk**\n\n` +
+        `💳 Saldo restante: **${account.coins} Coins Nisk**`
+      )
+    ]
   });
 }
 
 /* =========================================================
-   INVITE STATS
+   LUCK
 ========================================================= */
 
-async function sendInviteStats(target, user) {
-  const data = guildDB(target.guild.id);
+async function playLuck(
+  source,
+  slash = true
+) {
+  const data =
+    guildDB(
+      source.guild.id
+    );
 
-  const info =
-    data.invites.users[user.id] || {
-      total: 0,
-      active: 0,
-      left: 0
-    };
+  const user =
+    source.user ||
+    source.author;
 
-  const embed = yellowEmbed(
-    "🔗・INVITACIONES",
-    `👤 **Usuario:** ${user}
+  const account =
+    getEconomyUser(
+      source.guild.id,
+      user.id
+    );
 
-👥 **Miembros invitados:** ${info.total}
+  const cooldown =
+    30000;
 
-🟢 **Actualmente en el servidor:** ${info.active}
+  const remaining =
+    cooldown -
+    (Date.now() -
+      account.lastLuck);
 
-🔴 **Se fueron:** ${info.left}
-
-📊 **Total:** ${info.total}`
-  );
-
-  if (target.reply) {
-    return target.reply({
-      embeds: [embed]
+  if (remaining > 0) {
+    return source.reply({
+      content:
+        `🍀 Debes esperar **${formatTime(remaining)}** para volver a usar Luck.`,
+      ephemeral: true
     });
   }
 
-  return target.channel.send({
-    embeds: [embed]
+  const rewards = [
+    0,
+    0,
+    50,
+    75,
+    100,
+    150,
+    200,
+    300
+  ];
+
+  const reward =
+    rewards[
+      Math.floor(
+        Math.random() *
+        rewards.length
+      )
+    ];
+
+  account.lastLuck =
+    Date.now();
+
+  account.coins +=
+    reward;
+
+  saveDB();
+
+  return source.reply({
+    embeds: [
+      yellowEmbed(
+        "🍀 LUCK",
+        reward > 0
+          ? `✨ ¡La suerte estuvo de tu lado!\n\n` +
+            `💰 Ganaste **${reward} Coins Nisk**.\n\n` +
+            `💳 Nuevo saldo: **${account.coins} Coins Nisk**`
+          : `😅 Esta vez no hubo recompensa.\n\n` +
+            `💰 No perdiste ninguna moneda.\n\n` +
+            `Puedes volver a intentarlo después.`
+      )
+    ]
   });
 }
 
 /* =========================================================
-   INTERACCIONES
+   SORTEOS
 ========================================================= */
 
-client.on("interactionCreate", async interaction => {
+async function createGiveaway(
+  interaction,
+  duration,
+  winners,
+  prize
+) {
+  const data =
+    guildDB(
+      interaction.guild.id
+    );
+
+  const channel =
+    interaction.channel;
+
+  const endAt =
+    Date.now() + duration;
+
+  const id =
+    `${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 7)}`;
+
+  data.giveaways[id] = {
+    id,
+    channelId: channel.id,
+    messageId: null,
+    prize,
+    winners,
+    endAt,
+    participants: [],
+    ended: false,
+    hostId:
+      interaction.user.id
+  };
+
+  const joinButton =
+    new ButtonBuilder()
+      .setCustomId(
+        `giveaway_join_${id}`
+      )
+      .setLabel(
+        "Participar"
+      )
+      .setEmoji("🎉")
+      .setStyle(
+        ButtonStyle.Primary
+      );
+
+  const embed =
+    yellowEmbed(
+      "╭・✦・──────────────・✦・╮\n             🎉 SORTEO\n╰・✦・──────────────・✦・╯",
+      `🎁 **Premio:** ${prize}\n\n` +
+      `🏆 **Ganadores:** ${winners}\n` +
+      `⏰ **Finaliza:** <t:${Math.floor(endAt / 1000)}:R>\n\n` +
+      `👤 Organizado por: ${interaction.user}\n\n` +
+      `Pulsa el botón de abajo para participar.\n\n` +
+      `💛 **Nisk Studio | Sorteos**`
+    );
+
+  const msg =
+    await channel.send({
+      embeds: [embed],
+      components: [
+        new ActionRowBuilder().addComponents(
+          joinButton
+        )
+      ]
+    });
+
+  data.giveaways[id].messageId =
+    msg.id;
+
+  saveDB();
+
+  await interaction.reply({
+    embeds: [
+      yellowEmbed(
+        "🎉 Sorteo creado",
+        `El sorteo se ha publicado correctamente en ${channel}.\n\n` +
+        `🎁 Premio: **${prize}**\n` +
+        `🏆 Ganadores: **${winners}**\n` +
+        `⏰ Duración: **${formatTime(duration)}**`
+      )
+    ],
+    ephemeral: true
+  });
+
+  setTimeout(
+    () =>
+      finishGiveaway(
+        interaction.guild,
+        id
+      ),
+    duration
+  );
+}
+
+async function createGiveawayPrefix(
+  message,
+  args,
+  data
+) {
+  if (
+    !isStaff(
+      message.member
+    )
+  ) {
+    return message.reply(
+      "⛔ No tienes permisos."
+    );
+  }
+
+  const duration =
+    parseDuration(
+      args[0]
+    );
+
+  const winners =
+    Number(args[1]);
+
+  const prize =
+    args
+      .slice(2)
+      .join(" ");
+
+  if (
+    !duration ||
+    !winners ||
+    winners < 1 ||
+    winners > 20 ||
+    !prize
+  ) {
+    return message.reply(
+      "Uso: `n.sorteo 1h 1 Premio`\n\n" +
+      "Ejemplo: `n.sorteo 30m 2 Discord Nitro`"
+    );
+  }
+
+  const endAt =
+    Date.now() +
+    duration;
+
+  const id =
+    `${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 7)}`;
+
+  data.giveaways[id] = {
+    id,
+    channelId:
+      message.channel.id,
+    messageId: null,
+    prize,
+    winners,
+    endAt,
+    participants: [],
+    ended: false,
+    hostId:
+      message.author.id
+  };
+
+  const button =
+    new ButtonBuilder()
+      .setCustomId(
+        `giveaway_join_${id}`
+      )
+      .setLabel(
+        "Participar"
+      )
+      .setEmoji("🎉")
+      .setStyle(
+        ButtonStyle.Primary
+      );
+
+  const giveaway =
+    await message.channel.send({
+      embeds: [
+        yellowEmbed(
+          "╭・✦・──────────────・✦・╮\n             🎉 SORTEO\n╰・✦・──────────────・✦・╯",
+          `🎁 **Premio:** ${prize}\n\n` +
+          `🏆 **Ganadores:** ${winners}\n` +
+          `⏰ **Finaliza:** <t:${Math.floor(endAt / 1000)}:R>\n\n` +
+          `👤 Organizado por: ${message.author}\n\n` +
+          `Pulsa el botón para participar.\n\n` +
+          `💛 **Nisk Studio | Sorteos**`
+        )
+      ],
+      components: [
+        new ActionRowBuilder().addComponents(
+          button
+        )
+      ]
+    });
+
+  data.giveaways[id].messageId =
+    giveaway.id;
+
+  saveDB();
+
+  setTimeout(
+    () =>
+      finishGiveaway(
+        message.guild,
+        id
+      ),
+    duration
+  );
+
+  return message.delete()
+    .catch(() => {});
+}
+
+async function finishGiveaway(
+  guild,
+  id
+) {
+  const data =
+    guildDB(
+      guild.id
+    );
+
+  const giveaway =
+    data.giveaways[id];
+
+  if (
+    !giveaway ||
+    giveaway.ended
+  ) {
+    return;
+  }
+
+  giveaway.ended =
+    true;
+
+  const channel =
+    guild.channels.cache.get(
+      giveaway.channelId
+    );
+
+  const participants =
+    Array.from(
+      new Set(
+        giveaway.participants ||
+          []
+      )
+    );
+
+  const shuffled =
+    participants.sort(
+      () => Math.random() - 0.5
+    );
+
+  const winners =
+    shuffled.slice(
+      0,
+      Math.min(
+        giveaway.winners,
+        shuffled.length
+      )
+    );
+
+  saveDB();
+
+  if (
+    channel?.isTextBased()
+  ) {
+    const text =
+      winners.length
+        ? winners
+            .map(
+              id =>
+                `<@${id}>`
+            )
+            .join(", ")
+        : "No hubo participantes.";
+
+    await channel.send({
+      embeds: [
+        yellowEmbed(
+          "🏆 SORTEO FINALIZADO",
+          `🎁 Premio: **${giveaway.prize}**\n\n` +
+          `🏆 Ganador(es): ${text}\n\n` +
+          `👥 Participantes: **${participants.length}**\n\n` +
+          `💛 Gracias por participar en **Nisk Studio**.`
+        )
+      ]
+    });
+
+    await sendLog(
+      guild,
+      data.channels.giveawayLogs,
+      yellowEmbed(
+        "🎉 Sorteo finalizado",
+        `🎁 Premio: **${giveaway.prize}**\n` +
+        `🏆 Ganadores: ${text}\n` +
+        `👥 Participantes: **${participants.length}**`
+      )
+    );
+  }
+
   try {
-    /* =====================================================
-       SLASH COMMANDS
-    ===================================================== */
-
-    if (interaction.isChatInputCommand()) {
-      const data = guildDB(interaction.guild.id);
-
-      /* ADMIN */
-
-      if (interaction.commandName === "admin") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        return sendAdminPanel(interaction);
-      }
-
-      /* STAFF */
-
-      if (interaction.commandName === "staff") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        const role =
-          interaction.options.getRole("rol");
-
-        data.staffRole = role.id;
-
-        saveDB();
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "🛡️ Staff configurado",
-              `El rol ${role} ahora es el rol de Staff.`
-            )
-          ]
-        });
-      }
-
-      /* ADD CATEGORY */
-
-      if (interaction.commandName === "addcategory") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        const name =
-          interaction.options.getString("nombre");
-
-        const questionText =
-          interaction.options.getString("preguntas");
-
-        const questions =
-          parseQuestions(questionText);
-
-        data.ticketTypes = data.ticketTypes.filter(
-          category =>
-            category.name.toLowerCase() !==
-            name.toLowerCase()
+    if (
+      channel &&
+      giveaway.messageId
+    ) {
+      const message =
+        await channel.messages.fetch(
+          giveaway.messageId
         );
 
-        data.ticketTypes.push({
-          name,
-          questions
-        });
-
-        saveDB();
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "🎫 Categoría añadida",
-              `**${name}**\n\n${questions
-                .map(
-                  (q, i) =>
-                    `**${i + 1}.** ${q}`
-                )
-                .join("\n")}`
-            )
-          ]
-        });
-      }
-
-      /* REMOVE CATEGORY */
-
-      if (interaction.commandName === "removecategory") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        const name =
-          interaction.options.getString("nombre");
-
-        const before = data.ticketTypes.length;
-
-        data.ticketTypes = data.ticketTypes.filter(
-          category =>
-            category.name.toLowerCase() !==
-            name.toLowerCase()
-        );
-
-        if (before === data.ticketTypes.length) {
-          return interaction.reply({
-            content: "❌ Esa categoría no existe.",
-            ephemeral: true
-          });
-        }
-
-        saveDB();
-
-        return interaction.reply(
-          `✅ Categoría **${name}** eliminada.`
-        );
-      }
-
-      /* TICKET PANEL */
-
-      if (interaction.commandName === "ticketpanel") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        await interaction.reply({
-          content: "✅ Panel enviado.",
-          ephemeral: true
-        });
-
-        return sendTicketPanel(interaction.channel);
-      }
-
-      /* TICKET CATEGORY */
-
-      if (interaction.commandName === "ticketcategory") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        const category =
-          interaction.options.getChannel("categoria");
-
-        data.ticketCategory = category.id;
-
-        saveDB();
-
-        return interaction.reply(
-          `✅ Los tickets se crearán dentro de ${category}.`
-        );
-      }
-
-      /* WELCOME */
-
-      if (interaction.commandName === "welcome") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        const channel =
-          interaction.options.getChannel("canal");
-
-        data.channels.welcome = channel.id;
-
-        saveDB();
-
-        return interaction.reply(
-          `✅ Canal de bienvenida: ${channel}`
-        );
-      }
-
-      /* INVITE */
-
-      if (interaction.commandName === "invite") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        const channel =
-          interaction.options.getChannel("canal");
-
-        data.channels.invites = channel.id;
-
-        saveDB();
-
-        return interaction.reply(
-          `✅ Canal de invitaciones: ${channel}`
-        );
-      }
-
-      /* AUTOROLE */
-
-      if (interaction.commandName === "autorole") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        const role =
-          interaction.options.getRole("rol");
-
-        if (!data.autoroles.includes(role.id)) {
-          data.autoroles.push(role.id);
-        }
-
-        saveDB();
-
-        return interaction.reply(
-          `✅ ${role} configurado como autorol.`
-        );
-      }
-
-      if (interaction.commandName === "autorole-remove") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        const role =
-          interaction.options.getRole("rol");
-
-        data.autoroles =
-          data.autoroles.filter(
-            id => id !== role.id
-          );
-
-        saveDB();
-
-        return interaction.reply(
-          `✅ ${role} eliminado de los autoroles.`
-        );
-      }
-
-      /* LOGS */
-
-      if (interaction.commandName === "logs") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        const type =
-          interaction.options.getString("tipo");
-
-        const channel =
-          interaction.options.getChannel("canal");
-
-        data.channels[type] = channel.id;
-
-        saveDB();
-
-        return interaction.reply(
-          `✅ Canal de logs configurado: ${channel}`
-        );
-      }
-
-      /* LEVELS */
-
-      if (interaction.commandName === "levels") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        const enabled =
-          interaction.options.getBoolean("activo");
-
-        const channel =
-          interaction.options.getChannel("canal");
-
-        const xp =
-          interaction.options.getInteger("xp");
-
-        const cooldown =
-          interaction.options.getInteger("cooldown");
-
-        const customMessage =
-          interaction.options.getString("mensaje");
-
-        data.levels.enabled = enabled;
-
-        if (channel) {
-          data.levels.channel = channel.id;
-        }
-
-        if (xp !== null) {
-          data.levels.xpPerMessage = xp;
-        }
-
-        if (cooldown !== null) {
-          data.levels.cooldown = cooldown;
-        }
-
-        if (customMessage) {
-          data.levels.message = customMessage;
-        }
-
-        saveDB();
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "📈 Sistema de niveles configurado",
-              `🟢 **Activo:** ${enabled ? "Sí" : "No"}
-📺 **Canal:** ${
-                data.levels.channel
-                  ? `<#${data.levels.channel}>`
-                  : "Canal actual"
-              }
-✨ **XP por mensaje:** ${data.levels.xpPerMessage}
-⏱️ **Cooldown:** ${data.levels.cooldown}s
-📝 **Mensaje:** ${data.levels.message}`
-            )
-          ]
-        });
-      }
-
-      /* RANK */
-
-      if (interaction.commandName === "rank") {
-        return sendRank(
-          interaction,
-          interaction.user
-        );
-      }
-
-      /* EMBED */
-
-      if (interaction.commandName === "embed") {
-        if (
-          !interaction.member.permissions.has(
-            PermissionFlagsBits.ManageMessages
-          )
-        ) {
-          return interaction.reply({
-            content: "❌ No tienes permiso.",
-            ephemeral: true
-          });
-        }
-
-        const content =
-          interaction.options.getString("mensaje");
-
-        const colorText =
-          interaction.options.getString("color");
-
-        let color = COLOR;
-
-        if (
-          colorText &&
-          /^#[0-9A-F]{6}$/i.test(colorText)
-        ) {
-          color = parseInt(
-            colorText.slice(1),
-            16
-          );
-        }
-
-        return interaction.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(color)
-              .setDescription(content)
-              .setTimestamp()
-          ]
-        });
-      }
-
-      /* PAY */
-
-      if (interaction.commandName === "pay") {
-        if (!isStaff(interaction.member)) {
-          return interaction.reply({
-            content: "❌ No tienes permiso.",
-            ephemeral: true
-          });
-        }
-
-        const user =
-          interaction.options.getUser("usuario");
-
-        const amount =
-          interaction.options.getString("cantidad");
-
-        const concept =
-          interaction.options.getString("concepto");
-
-        const embed = yellowEmbed(
-          "💳 Transacción registrada",
-          `👤 **Usuario:** ${user}
-💰 **Cantidad:** ${amount}
-📝 **Concepto:** ${concept}
-👮 **Registrado por:** ${interaction.user}`
-        );
-
-        await interaction.reply({
-          embeds: [embed]
-        });
-
-        return sendLog(
-          interaction.guild,
-          "transactionLogs",
-          embed
-        );
-      }
-
-      /* INVITES CHECK */
-
-      if (interaction.commandName === "invitescheck") {
-        if (!isStaff(interaction.member)) {
-          return interaction.reply({
-            content: "❌ No tienes permiso.",
-            ephemeral: true
-          });
-        }
-
-        const user =
-          interaction.options.getUser("usuario");
-
-        return sendInviteStats(
-          interaction,
-          user
-        );
-      }
-
-      /* BAN */
-
-      if (interaction.commandName === "ban") {
-        if (!isStaff(interaction.member)) {
-          return interaction.reply({
-            content: "❌ No tienes permiso.",
-            ephemeral: true
-          });
-        }
-
-        const user =
-          interaction.options.getUser("usuario");
-
-        const reason =
-          interaction.options.getString("razon") ||
-          "Sin razón especificada";
-
-        const member =
-          interaction.guild.members.cache.get(
-            user.id
-          );
-
-        if (!member) {
-          return interaction.reply({
-            content: "❌ Ese usuario no está en el servidor.",
-            ephemeral: true
-          });
-        }
-
-        await member.ban({ reason });
-
-        return interaction.reply(
-          `🔨 ${user.tag} ha sido baneado.\n**Razón:** ${reason}`
-        );
-      }
-
-      /* KICK */
-
-      if (interaction.commandName === "kick") {
-        if (!isStaff(interaction.member)) {
-          return interaction.reply({
-            content: "❌ No tienes permiso.",
-            ephemeral: true
-          });
-        }
-
-        const user =
-          interaction.options.getUser("usuario");
-
-        const member =
-          interaction.guild.members.cache.get(
-            user.id
-          );
-
-        if (!member) {
-          return interaction.reply({
-            content: "❌ Ese usuario no está en el servidor.",
-            ephemeral: true
-          });
-        }
-
-        const reason =
-          interaction.options.getString("razon") ||
-          "Sin razón especificada";
-
-        await member.kick(reason);
-
-        return interaction.reply(
-          `👢 ${user.tag} ha sido expulsado.`
-        );
-      }
-
-      /* MUTE */
-
-      if (interaction.commandName === "mute") {
-        if (!isStaff(interaction.member)) {
-          return interaction.reply({
-            content: "❌ No tienes permiso.",
-            ephemeral: true
-          });
-        }
-
-        const user =
-          interaction.options.getUser("usuario");
-
-        const member =
-          interaction.guild.members.cache.get(
-            user.id
-          );
-
-        const minutes =
-          interaction.options.getInteger("minutos");
-
-        if (!member) {
-          return interaction.reply({
-            content: "❌ Usuario no encontrado.",
-            ephemeral: true
-          });
-        }
-
-        const reason =
-          interaction.options.getString("razon") ||
-          "Sin razón especificada";
-
-        await member.timeout(
-          minutes * 60 * 1000,
-          reason
-        );
-
-        return interaction.reply(
-          `🔇 ${user.tag} ha sido silenciado durante **${minutes} minutos**.`
-        );
-      }
-
-      /* UNMUTE */
-
-      if (interaction.commandName === "unmute") {
-        if (!isStaff(interaction.member)) {
-          return interaction.reply({
-            content: "❌ No tienes permiso.",
-            ephemeral: true
-          });
-        }
-
-        const user =
-          interaction.options.getUser("usuario");
-
-        const member =
-          interaction.guild.members.cache.get(
-            user.id
-          );
-
-        if (!member) {
-          return interaction.reply({
-            content: "❌ Usuario no encontrado.",
-            ephemeral: true
-          });
-        }
-
-        await member.timeout(null);
-
-        return interaction.reply(
-          `🔊 Se quitó el silencio a ${user}.`
-        );
-      }
-
-      /* PURGE */
-
-      if (interaction.commandName === "purge") {
-        if (!isStaff(interaction.member)) {
-          return interaction.reply({
-            content: "❌ No tienes permiso.",
-            ephemeral: true
-          });
-        }
-
-        const amount =
-          interaction.options.getInteger("cantidad");
-
-        await interaction.channel.bulkDelete(
-          amount,
-          true
-        );
-
-        return interaction.reply({
-          content: `🧹 Se eliminaron ${amount} mensajes.`,
-          ephemeral: true
-        });
-      }
-
-      /* WARN */
-
-      if (interaction.commandName === "warn") {
-        if (!isStaff(interaction.member)) {
-          return interaction.reply({
-            content: "❌ No tienes permiso.",
-            ephemeral: true
-          });
-        }
-
-        const user =
-          interaction.options.getUser("usuario");
-
-        const reason =
-          interaction.options.getString("razon");
-
-        if (!data.warns[user.id]) {
-          data.warns[user.id] = [];
-        }
-
-        data.warns[user.id].push({
-          reason,
-          moderator: interaction.user.id,
-          date: Date.now()
-        });
-
-        saveDB();
-
-        return interaction.reply(
-          `⚠️ ${user} recibió una advertencia.\n**Razón:** ${reason}`
-        );
-      }
-
-      /* WARNINGS */
-
-      if (interaction.commandName === "warnings") {
-        if (!isStaff(interaction.member)) {
-          return interaction.reply({
-            content: "❌ No tienes permiso.",
-            ephemeral: true
-          });
-        }
-
-        const user =
-          interaction.options.getUser("usuario");
-
-        const warnings =
-          data.warns[user.id] || [];
-
-        if (!warnings.length) {
-          return interaction.reply(
-            `✅ ${user} no tiene advertencias.`
-          );
-        }
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              `⚠️ Advertencias de ${user.tag}`,
-              warnings
-                .map(
-                  (w, i) =>
-                    `**${i + 1}.** ${w.reason}\n👮 <@${w.moderator}> • <t:${Math.floor(w.date / 1000)}:R>`
-                )
-                .join("\n\n")
-            )
-          ]
-        });
-      }
-
-      /* SORTEO */
-
-      if (interaction.commandName === "sorteo") {
-        if (
-          !interaction.member.permissions.has(
-            PermissionFlagsBits.ManageGuild
-          )
-        ) {
-          return interaction.reply({
-            content: "❌ No tienes permiso.",
-            ephemeral: true
-          });
-        }
-
-        const durationText =
-          interaction.options.getString("duracion");
-
-        const duration =
-          parseDuration(durationText);
-
-        if (!duration) {
-          return interaction.reply({
-            content:
-              "❌ Duración inválida. Usa `10m`, `1h`, `2d`, etc.",
-            ephemeral: true
-          });
-        }
-
-        const winners =
-          interaction.options.getInteger("ganadores");
-
-        const prize =
-          interaction.options.getString("premio");
-
-        const invites =
-          interaction.options.getInteger("invitaciones") || 0;
-
-        const level =
-          interaction.options.getInteger("nivel") || 0;
-
-        const fakeMessage = {
-          guild: interaction.guild,
-          channel: interaction.channel,
-          author: interaction.user
-        };
-
-        await interaction.reply({
-          content: "✅ Sorteo creado.",
-          ephemeral: true
-        });
-
-        return createGiveaway(
-          fakeMessage,
-          duration,
-          winners,
-          prize,
-          invites,
-          level
-        );
-      }
-
-      /* REROLL */
-
-      if (interaction.commandName === "reroll") {
-        if (
-          !interaction.member.permissions.has(
-            PermissionFlagsBits.ManageGuild
-          )
-        ) {
-          return interaction.reply({
-            content: "❌ No tienes permiso.",
-            ephemeral: true
-          });
-        }
-
-        const id =
-          interaction.options.getString("id");
-
-        const giveaway = data.giveaways[id];
-
-        if (!giveaway) {
-          return interaction.reply({
-            content: "❌ Sorteo no encontrado.",
-            ephemeral: true
-          });
-        }
-
-        const members =
-          giveaway.participants
-            .map(id =>
-              interaction.guild.members.cache.get(id)
-            )
-            .filter(Boolean);
-
-        if (!members.length) {
-          return interaction.reply({
-            content: "❌ No hay participantes.",
-            ephemeral: true
-          });
-        }
-
-        const winner =
-          members[
-            Math.floor(Math.random() * members.length)
-          ];
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "🔄・REROLL",
-              `🎉 Nuevo ganador del sorteo **${id}**:\n\n🏆 ${winner}`
-            )
-          ]
-        });
-      }
-    }
-
-    /* =====================================================
-       SELECT MENU
-    ===================================================== */
-
-    if (interaction.isStringSelectMenu()) {
-      if (
-        interaction.customId ===
-        "ticket_category_select"
-      ) {
-        const data =
-          guildDB(interaction.guild.id);
-
-        const index = Number(
-          interaction.values[0].replace(
-            "ticket_category_",
-            ""
-          )
-        );
-
-        const category =
-          data.ticketTypes[index];
-
-        if (!category) {
-          return interaction.reply({
-            content:
-              "❌ Esta categoría ya no existe.",
-            ephemeral: true
-          });
-        }
-
-        return showTicketModal(
-          interaction,
-          category,
-          index
-        );
-      }
-    }
-
-    /* =====================================================
-       MODAL TICKET
-    ===================================================== */
-
-    if (interaction.isModalSubmit()) {
-      if (
-        interaction.customId.startsWith(
-          "ticket_modal_"
-        )
-      ) {
-        const index = Number(
-          interaction.customId.replace(
-            "ticket_modal_",
-            ""
-          )
-        );
-
-        const data =
-          guildDB(interaction.guild.id);
-
-        const category =
-          data.ticketTypes[index];
-
-        if (!category) {
-          return interaction.reply({
-            content:
-              "❌ Esta categoría ya no existe.",
-            ephemeral: true
-          });
-        }
-
-        const answers = category.questions
-          .slice(0, 5)
-          .map((question, i) => ({
-            question,
-            answer:
-              interaction.fields.getTextInputValue(
-                `question_${i}`
+      await message.edit({
+        components: [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(
+                `giveaway_finished_${id}`
               )
-          }));
+              .setLabel(
+                "Sorteo finalizado"
+              )
+              .setEmoji("🔒")
+              .setStyle(
+                ButtonStyle.Secondary
+              )
+              .setDisabled(true)
+          )
+        ]
+      });
+    }
+  } catch {}
+}
 
-        return createTicket(
-          interaction,
-          category,
-          answers
-        );
-      }
+/* =========================================================
+   INTERACCIONES DISCORD
+========================================================= */
 
-      if (
-        interaction.customId.startsWith(
-          "ticket_close_modal_"
-        )
-      ) {
-        const ticketId =
-          interaction.customId.replace(
-            "ticket_close_modal_",
-            ""
-          );
+client.on(
+  "interactionCreate",
+  async interaction => {
+    if (!interaction.guild) return;
 
-        const reason =
-          interaction.fields.getTextInputValue(
-            "close_reason"
-          );
+    const data =
+      guildDB(
+        interaction.guild.id
+      );
 
-        return closeTicket(
-          interaction,
-          ticketId,
-          reason
-        );
-      }
+    /* =====================================================
+       HELP MENU
+    ===================================================== */
+
+    if (
+      interaction.isStringSelectMenu() &&
+      interaction.customId ===
+        "help_menu"
+    ) {
+      const selected =
+        interaction.values[0];
+
+      const sections = {
+        economy: [
+          "💰 Economía",
+          `\`/balance\` — Ver Coins Nisk.\n` +
+          `\`/work\` — Trabajar y ganar Coins Nisk.\n` +
+          `\`/luck\` — Probar suerte gratis.\n` +
+          `\`/shop\` — Ver la tienda.\n` +
+          `\`/inventory\` — Ver inventario.\n` +
+          `\`/leaderboard\` — Ver el TOP de Coins Nisk.\n` +
+          `\`/buy\` — Comprar un artículo.`
+        ],
+
+        levels: [
+          "📈 Niveles",
+          `\`/rank\` — Ver tu nivel y XP.\n\n` +
+          `💬 Ganas XP participando en el servidor.\n` +
+          `🏆 Los niveles pueden entregar roles configurados por la administración.`
+        ],
+
+        fun: [
+          "🍀 Diversión",
+          `\`/luck\` — Juego gratuito de suerte.\n` +
+          `\`n.sorteo\` — Sorteos creados por el Staff autorizado.`
+        ],
+
+        interaction: [
+          "🤝 Interacción",
+          `\`/hug\` — Dar un abrazo.\n` +
+          `\`/highfive\` — Chocar los cinco.\n` +
+          `\`/poke\` — Dar un toque.\n` +
+          `\`/clap\` — Aplaudir.\n` +
+          `\`/wave\` — Saludar.\n` +
+          `\`/gift\` — Enviar un regalo simbólico.\n` +
+          `\`/cookie\` — Dar una galleta.\n` +
+          `\`/compliment\` — Dar un cumplido.\n` +
+          `\`/laugh\` — Reírse con alguien.\n` +
+          `\`/challenge\` — Retar a alguien.`
+        ],
+
+        utility: [
+          "👤 Utilidades",
+          `\`/rank\` — Consultar nivel.\n` +
+          `\`/balance\` — Consultar Coins Nisk.\n` +
+          `\`/inventory\` — Consultar inventario.\n` +
+          `\`/shop\` — Consultar tienda.\n` +
+          `\`/leaderboard\` — Consultar clasificación.`
+        ],
+
+        info: [
+          "ℹ️ Información",
+          `💛 **Nisk Studio | Programación**\n\n` +
+          `Una comunidad para programación, bots, juegos, proyectos y conversación.\n\n` +
+          `Utiliza los canales correspondientes y respeta las reglas de la comunidad.`
+        ]
+      };
+
+      const section =
+        sections[selected];
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            section[0],
+            section[1]
+          )
+        ],
+        ephemeral: true
+      });
     }
 
     /* =====================================================
-       BOTONES
+       ADMIN MENU
     ===================================================== */
 
-    if (interaction.isButton()) {
-      const data =
-        guildDB(interaction.guild.id);
-
-      /* ADMIN TICKETS */
-
-      if (interaction.customId === "admin_tickets") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "🎫・GESTIÓN DE TICKETS",
-              `**Categorías:** ${data.ticketTypes.length}
-
-${data.ticketTypes
-  .map(
-    category =>
-      `🎫 **${category.name}**\n${category.questions
-        .map(q => `> ${q}`)
-        .join("\n")}`
-  )
-  .join("\n\n")}
-
-📂 **Categoría Discord:** ${
-                data.ticketCategory
-                  ? `<#${data.ticketCategory}>`
-                  : "No configurada"
-              }
-
-Usa:
-\`/addcategory\`
-\`/removecategory\`
-\`/ticketpanel\`
-\`/ticketcategory\``
-            )
-          ],
-          ephemeral: true
-        });
-      }
-
-      /* ADMIN MODERATION */
-
+    if (
+      interaction.isStringSelectMenu() &&
+      interaction.customId ===
+        "admin_menu"
+    ) {
       if (
-        interaction.customId ===
-        "admin_moderation"
-      ) {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "🛡️・MODERACIÓN",
-              `El equipo autorizado puede utilizar:
-
-🔨 \`/ban\`
-👢 \`/kick\`
-🔇 \`/mute\`
-🔊 \`/unmute\`
-🧹 \`/purge\`
-⚠️ \`/warn\`
-📋 \`/warnings\`
-
-El rol Staff puede utilizar estas herramientas, pero no modificar la configuración del bot.`
-            )
-          ],
-          ephemeral: true
-        });
-      }
-
-      /* ADMIN LOGS */
-
-      if (interaction.customId === "admin_logs") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "📜・LOGS",
-              `📌 General: ${
-                data.channels.generalLogs
-                  ? `<#${data.channels.generalLogs}>`
-                  : "No configurado"
-              }
-
-🛡️ Moderación: ${
-                data.channels.moderationLogs
-                  ? `<#${data.channels.moderationLogs}>`
-                  : "No configurado"
-              }
-
-🎫 Tickets: ${
-                data.channels.ticketLogs
-                  ? `<#${data.channels.ticketLogs}>`
-                  : "No configurado"
-              }
-
-💳 Transacciones: ${
-                data.channels.transactionLogs
-                  ? `<#${data.channels.transactionLogs}>`
-                  : "No configurado"
-              }
-
-📈 Niveles: ${
-                data.channels.levelLogs
-                  ? `<#${data.channels.levelLogs}>`
-                  : "No configurado"
-              }`
-            )
-          ],
-          ephemeral: true
-        });
-      }
-
-      /* ADMIN WELCOME */
-
-      if (interaction.customId === "admin_welcome") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "👋・WELCOME",
-              `Canal actual:
-
-${
-                data.channels.welcome
-                  ? `<#${data.channels.welcome}>`
-                  : "❌ No configurado"
-              }
-
-Configura con:
-
-\`/welcome #canal\`
-\`n.welcome #canal\``
-            )
-          ],
-          ephemeral: true
-        });
-      }
-
-      /* ADMIN INVITES */
-
-      if (interaction.customId === "admin_invites") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "🔗・INVITES",
-              `📺 Canal:
-
-${
-                data.channels.invites
-                  ? `<#${data.channels.invites}>`
-                  : "❌ No configurado"
-              }
-
-Consulta invitaciones con:
-
-\`/invitescheck @usuario\`
-\`n.invitescheck @usuario\``
-            )
-          ],
-          ephemeral: true
-        });
-      }
-
-      /* ADMIN LEVELS */
-
-      if (interaction.customId === "admin_levels") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "📈・NIVELES",
-              `🟢 **Activo:** ${
-                data.levels.enabled
-                  ? "Sí"
-                  : "No"
-              }
-
-📺 **Canal:** ${
-                data.levels.channel
-                  ? `<#${data.levels.channel}>`
-                  : "Canal actual"
-              }
-
-✨ **XP:** ${data.levels.xpPerMessage}
-
-⏱️ **Cooldown:** ${data.levels.cooldown}s
-
-📝 **Mensaje:**
-${data.levels.message}
-
-Configura con:
-
-\`/levels\``
-            )
-          ],
-          ephemeral: true
-        });
-      }
-
-      /* ADMIN AUTOROLES */
-
-      if (
-        interaction.customId ===
-        "admin_autoroles"
-      ) {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "👤・AUTOROLES",
-              data.autoroles.length
-                ? data.autoroles
-                    .map(id => `• <@&${id}>`)
-                    .join("\n")
-                : "No hay autoroles configurados."
-            )
-          ],
-          ephemeral: true
-        });
-      }
-
-      /* ADMIN GIVEAWAYS */
-
-      if (
-        interaction.customId ===
-        "admin_giveaways"
-      ) {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        const giveaways =
-          Object.values(data.giveaways);
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "🎉・SORTEOS",
-              giveaways.length
-                ? giveaways
-                    .map(
-                      giveaway =>
-                        `🎁 **${giveaway.prize}**\n🆔 \`${giveaway.id}\`\n👥 ${giveaway.participants.length} participantes\n${giveaway.ended ? "🔴 Finalizado" : "🟢 Activo"}`
-                    )
-                    .join("\n\n")
-                : "No hay sorteos registrados.\n\nUsa `/sorteo` para crear uno."
-            )
-          ],
-          ephemeral: true
-        });
-      }
-
-      /* ADMIN CONFIG */
-
-      if (interaction.customId === "admin_config") {
-        if (!isRealAdmin(interaction.member)) {
-          return interaction.reply({
-            content: "❌ Solo administradores.",
-            ephemeral: true
-          });
-        }
-
-        return interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "⚙️・CONFIGURACIÓN",
-              `🛡️ **Staff:** ${
-                data.staffRole
-                  ? `<@&${data.staffRole}>`
-                  : "No configurado"
-              }
-
-🎫 **Categoría de tickets:** ${
-                data.ticketCategory
-                  ? `<#${data.ticketCategory}>`
-                  : "No configurada"
-              }
-
-👋 **Welcome:** ${
-                data.channels.welcome
-                  ? `<#${data.channels.welcome}>`
-                  : "No configurado"
-              }
-
-🔗 **Invites:** ${
-                data.channels.invites
-                  ? `<#${data.channels.invites}>`
-                  : "No configurado"
-              }
-
-🎫 **Categorías de tickets:** ${data.ticketTypes.length}
-
-👤 **Autoroles:** ${data.autoroles.length}`
-            )
-          ],
-          ephemeral: true
-        });
-      }
-
-      /* ADMIN BUTTONS END */
-
-      /* TICKET CLAIM */
-
-      if (
-        interaction.customId.startsWith(
-          "ticket_claim_"
+        !isAdmin(
+          interaction.member
         )
       ) {
-        const ticketId =
-          interaction.customId.replace(
-            "ticket_claim_",
-            ""
-          );
-
-        const ticket =
-          data.tickets[ticketId];
-
-        if (!ticket) {
-          return interaction.reply({
-            content: "❌ Ticket no encontrado.",
-            ephemeral: true
-          });
-        }
-
-        if (!isStaff(interaction.member)) {
-          return interaction.reply({
-            content:
-              "❌ Solo el Staff puede reclamar tickets.",
-            ephemeral: true
-          });
-        }
-
-        ticket.claimedBy =
-          interaction.user.id;
-
-        saveDB();
-
-        await interaction.reply({
-          embeds: [
-            yellowEmbed(
-              "👤 Ticket reclamado",
-              `${interaction.user} se ha hecho cargo de este ticket.`
-            )
-          ]
-        });
-
-        return sendLog(
-          interaction.guild,
-          "ticketLogs",
-          yellowEmbed(
-            "👤 Ticket reclamado",
-            `**Ticket:** \`${ticketId}\`\n**Staff:** ${interaction.user}`
-          )
-        );
-      }
-
-      /* NOTIFY STAFF */
-
-      if (
-        interaction.customId.startsWith(
-          "ticket_notify_"
-        )
-      ) {
-        const ticketId =
-          interaction.customId.replace(
-            "ticket_notify_",
-            ""
-          );
-
-        const ticket =
-          data.tickets[ticketId];
-
-        if (!ticket) {
-          return interaction.reply({
-            content: "❌ Ticket no encontrado.",
-            ephemeral: true
-          });
-        }
-
-        if (data.staffRole) {
-          await interaction.channel.send(
-            `🔔 <@&${data.staffRole}> **${interaction.user} solicita atención en este ticket.**`
-          );
-        }
-
         return interaction.reply({
           content:
-            "🔔 El staff ha sido notificado.",
+            "⛔ Solo los administradores pueden utilizar este menú.",
           ephemeral: true
         });
       }
 
-      /* CLOSE */
+      const selected =
+        interaction.values[0];
 
-      if (
-        interaction.customId.startsWith(
-          "ticket_close_"
-        )
-      ) {
-        const ticketId =
-          interaction.customId.replace(
-            "ticket_close_",
-            ""
-          );
+      const sections = {
+        tickets: [
+          "🎫 Tickets",
+          `📂 Categoría principal: ${
+            data.ticketCategory
+              ? `<#${data.ticketCategory}>`
+              : "No configurada"
+          }\n\n` +
+          `🎟️ Tipos configurados: **${Object.keys(data.ticketTypes).length}**\n\n` +
+          `Puedes gestionar las categorías mediante \`/addcategory\` y \`/removecategory\`.`
+        ],
 
-        const ticket =
-          data.tickets[ticketId];
+        levels: [
+          "📈 Niveles",
+          `Sistema: **${
+            data.settings.levels.enabled
+              ? "Activado"
+              : "Desactivado"
+          }**\n` +
+          `📢 Canal: ${
+            data.settings.levels.channel
+              ? `<#${data.settings.levels.channel}>`
+              : "Canal donde se obtiene XP"
+          }\n` +
+          `✨ XP por mensaje: ${data.settings.levels.xpMin}-${data.settings.levels.xpMax}\n` +
+          `⏱️ Cooldown: ${formatTime(data.settings.levels.cooldown)}\n` +
+          `🏆 Recompensas configuradas: **${Object.keys(data.settings.levels.roleRewards).length}**`
+        ],
 
-        if (!ticket) {
-          return interaction.reply({
-            content: "❌ Ticket no encontrado.",
-            ephemeral: true
-          });
-        }
+        logs: [
+          "📋 Logs",
+          `📋 General: ${
+            data.channels.generalLogs
+              ? `<#${data.channels.generalLogs}>`
+              : "No configurado"
+          }\n` +
+          `🛡️ Moderación: ${
+            data.channels.moderationLogs
+              ? `<#${data.channels.moderationLogs}>`
+              : "No configurado"
+          }\n` +
+          `🎫 Tickets: ${
+            data.channels.ticketLogs
+              ? `<#${data.channels.ticketLogs}>`
+              : "No configurado"
+          }\n` +
+          `💳 Transacciones: ${
+            data.channels.transactionLogs
+              ? `<#${data.channels.transactionLogs}>`
+              : "No configurado"
+          }\n` +
+          `📈 Niveles: ${
+            data.channels.levelLogs
+              ? `<#${data.channels.levelLogs}>`
+              : "No configurado"
+          }\n` +
+          `🎉 Sorteos: ${
+            data.channels.giveawayLogs
+              ? `<#${data.channels.giveawayLogs}>`
+              : "No configurado"
+          }`
+        ],
 
-        if (
-          interaction.user.id !== ticket.userId &&
-          !isStaff(interaction.member)
-        ) {
-          return interaction.reply({
-            content:
-              "❌ No tienes permiso para cerrar este ticket.",
-            ephemeral: true
-          });
-        }
+        welcome: [
+          "👋 Bienvenida",
+          `Canal actual: ${
+            data.channels.welcome
+              ? `<#${data.channels.welcome}>`
+              : "No configurado"
+          }`
+        ],
 
-        const modal = new ModalBuilder()
+        invites: [
+          "🔗 Invitaciones",
+          `Canal actual: ${
+            data.channels.invites
+              ? `<#${data.channels.invites}>`
+              : "No configurado"
+          }\n\n` +
+          `El sistema registra invitados activos y miembros que posteriormente abandonan el servidor.`
+        ],
+
+        autoroles: [
+          "🎭 Autoroles",
+          data.autoroles.length
+            ? data.autoroles
+                .map(
+                  id =>
+                    `• <@&${id}>`
+                )
+                .join("\n")
+            : "No hay autoroles configurados."
+        ],
+
+        economy: [
+          "💰 Economía",
+          `💰 Sistema de Coins Nisk activo.\n\n` +
+          `💼 Work: recompensa cada 30 segundos.\n` +
+          `🍀 Luck: juego gratuito.\n` +
+          `🛍️ Tienda: ${Object.keys(data.shop).length} artículos.\n` +
+          `🏆 Leaderboard disponible.`
+        ],
+
+        giveaways: [
+          "🎉 Sorteos",
+          `🎉 Sorteos registrados: **${Object.keys(data.giveaways).length}**\n\n` +
+          `Los sorteos utilizan participación mediante botón y seleccionan ganadores automáticamente al finalizar.`
+        ],
+
+        moderation: [
+          "🛡️ Moderación",
+          `El Staff autorizado puede utilizar:\n\n` +
+          `🔨 Ban\n` +
+          `👢 Kick\n` +
+          `🔇 Timeout\n` +
+          `🔊 Unmute\n` +
+          `🧹 Purge\n` +
+          `⚠️ Warn\n` +
+          `🔒 Lock\n` +
+          `🔓 Unlock\n` +
+          `🐌 Slowmode`
+        ],
+
+        security: [
+          "🍯 Seguridad",
+          `Canal Honeypot: ${
+            data.honeypot.channel
+              ? `<#${data.honeypot.channel}>`
+              : "No configurado"
+          }\n\n` +
+          `🔨 Bans registrados: **${data.honeypot.bans}**\n\n` +
+          `⚠️ La configuración del Honeypot es exclusiva de administradores.`
+        ],
+
+        config: [
+          "⚙️ Configuración",
+          `🛡️ Staff: ${
+            data.staffRole
+              ? `<@&${data.staffRole}>`
+              : "No configurado"
+          }\n\n` +
+          `⚙️ Configuración exclusiva de administradores.\n` +
+          `👮 El Staff operativo no puede modificar estas opciones.`
+        ]
+      };
+
+      const section =
+        sections[selected];
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            section[0],
+            section[1]
+          )
+        ],
+        ephemeral: true
+      });
+    }
+
+    /* =====================================================
+       TICKET SELECT
+    ===================================================== */
+
+    if (
+      interaction.isStringSelectMenu() &&
+      interaction.customId ===
+        "ticket_type"
+    ) {
+      const typeKey =
+        interaction.values[0];
+
+      const type =
+        data.ticketTypes[
+          typeKey
+        ];
+
+      if (!type) {
+        return interaction.reply({
+          content:
+            "❌ Esa categoría ya no existe.",
+          ephemeral: true
+        });
+      }
+
+      const questions =
+        type.questions || [
+          "¿En qué te podemos ayudar?"
+        ];
+
+      const modal =
+        new ModalBuilder()
           .setCustomId(
-            `ticket_close_modal_${ticketId}`
+            `ticket_modal_${typeKey}`
           )
-          .setTitle("🔒 Cerrar ticket");
-
-        const reasonInput =
-          new TextInputBuilder()
-            .setCustomId("close_reason")
-            .setLabel("Motivo del cierre")
-            .setStyle(TextInputStyle.Paragraph)
-            .setPlaceholder(
-              "Explica brevemente por qué se cierra..."
+          .setTitle(
+            type.name.slice(
+              0,
+              45
             )
-            .setRequired(true)
-            .setMaxLength(1000);
+          );
 
-        modal.addComponents(
-          new ActionRowBuilder().addComponents(
-            reasonInput
+      questions
+        .slice(0, 5)
+        .forEach(
+          (
+            question,
+            index
+          ) => {
+            const input =
+              new TextInputBuilder()
+                .setCustomId(
+                  `question_${index}`
+                )
+                .setLabel(
+                  question.slice(
+                    0,
+                    45
+                  )
+                )
+                .setStyle(
+                  TextInputStyle.Paragraph
+                )
+                .setRequired(
+                  true
+                )
+                .setPlaceholder(
+                  "Escribe tu respuesta aquí..."
+                );
+
+            modal.addComponents(
+              new ActionRowBuilder().addComponents(
+                input
+              )
+            );
+          }
+        );
+
+      return interaction.showModal(
+        modal
+      );
+    }
+
+    /* =====================================================
+       TICKET MODAL
+    ===================================================== */
+
+    if (
+      interaction.isModalSubmit() &&
+      interaction.customId.startsWith(
+        "ticket_modal_"
+      )
+    ) {
+      const typeKey =
+        interaction.customId.replace(
+          "ticket_modal_",
+          ""
+        );
+
+      const type =
+        data.ticketTypes[
+          typeKey
+        ];
+
+      if (!type) {
+        return interaction.reply({
+          content:
+            "❌ Categoría no encontrada.",
+          ephemeral: true
+        });
+      }
+
+      const existing =
+        Object.values(
+          data.tickets
+        ).find(
+          ticket =>
+            ticket.userId ===
+              interaction.user.id &&
+            !ticket.closed
+        );
+
+      if (existing) {
+        return interaction.reply({
+          content:
+            `❌ Ya tienes un ticket abierto: <#${existing.channelId}>`,
+          ephemeral: true
+        });
+      }
+
+      const parent =
+        data.ticketCategory &&
+        interaction.guild.channels.cache.get(
+          data.ticketCategory
+        );
+
+      const channel =
+        await interaction.guild.channels.create(
+          {
+            name:
+              `ticket-${cleanName(
+                interaction.user.username
+              )}`,
+            type:
+              ChannelType.GuildText,
+            parent:
+              parent?.type ===
+              ChannelType.GuildCategory
+                ? parent.id
+                : undefined,
+
+            permissionOverwrites: [
+              {
+                id:
+                  interaction.guild
+                    .roles.everyone.id,
+                deny: [
+                  PermissionFlagsBits.ViewChannel
+                ]
+              },
+
+              {
+                id:
+                  interaction.user.id,
+                allow: [
+                  PermissionFlagsBits.ViewChannel,
+                  PermissionFlagsBits.SendMessages,
+                  PermissionFlagsBits.ReadMessageHistory,
+                  PermissionFlagsBits.AttachFiles
+                ]
+              }
+            ]
+          }
+        );
+
+      if (data.staffRole) {
+        await channel.permissionOverwrites.edit(
+          data.staffRole,
+          {
+            ViewChannel: true,
+            SendMessages: true,
+            ReadMessageHistory: true,
+            AttachFiles: true
+          }
+        );
+      }
+
+      const answers = [];
+
+      for (
+        let i = 0;
+        i <
+        (
+          type.questions ||
+          []
+        ).length;
+        i++
+      ) {
+        const answer =
+          interaction.fields.getTextInputValue(
+            `question_${i}`
+          );
+
+        answers.push(
+          `**${type.questions[i]}**\n${answer}`
+        );
+      }
+
+      const ticketId =
+        `${Date.now()}_${interaction.user.id}`;
+
+      data.tickets[
+        ticketId
+      ] = {
+        channelId:
+          channel.id,
+        userId:
+          interaction.user.id,
+        type:
+          typeKey,
+        claimedBy: null,
+        closed: false,
+        createdAt:
+          Date.now(),
+        rating: null
+      };
+
+      saveDB();
+
+      const buttons =
+        new ActionRowBuilder()
+          .addComponents(
+            new ButtonBuilder()
+              .setCustomId(
+                "ticket_claim"
+              )
+              .setLabel(
+                "Reclamar"
+              )
+              .setEmoji(
+                "🙋"
+              )
+              .setStyle(
+                ButtonStyle.Primary
+              ),
+
+            new ButtonBuilder()
+              .setCustomId(
+                "ticket_close"
+              )
+              .setLabel(
+                "Cerrar ticket"
+              )
+              .setEmoji(
+                "🔒"
+              )
+              .setStyle(
+                ButtonStyle.Danger
+              )
+          );
+
+      await channel.send({
+        content:
+          `<@${interaction.user.id}>`,
+        embeds: [
+          yellowEmbed(
+            `╭・✦・──────────────・✦・╮\n             🎫 ${type.name.toUpperCase()}\n╰・✦・──────────────・✦・╯`,
+            `👋 ¡Hola <@${interaction.user.id}>!\n\n` +
+            `Tu ticket ha sido creado correctamente.\n\n` +
+            `📌 **Categoría:** ${type.name}\n` +
+            `🆔 **ID:** \`${ticketId}\`\n` +
+            `👮 **Staff:** ${
+              data.staffRole
+                ? `<@&${data.staffRole}>`
+                : "Staff autorizado"
+            }\n\n` +
+            `━━━━━━━━━━━━━━━━━━━━\n\n` +
+            answers.join(
+              "\n\n"
+            ) +
+            `\n\n━━━━━━━━━━━━━━━━━━━━\n\n` +
+            `💛 Gracias por contactar con **Nisk Studio**.\n\n` +
+            `🔒 Cuando hayas terminado, utiliza el botón de cerrar.`
+          )
+        ],
+        components: [
+          buttons
+        ]
+      });
+
+      await interaction.reply({
+        content:
+          `✅ Tu ticket ha sido creado: ${channel}`,
+        ephemeral: true
+      });
+
+      await sendLog(
+        interaction.guild,
+        data.channels.ticketLogs,
+        yellowEmbed(
+          "🎫 Ticket creado",
+          `👤 Usuario: ${interaction.user}\n` +
+          `📂 Categoría: **${type.name}**\n` +
+          `📌 Canal: ${channel}\n` +
+          `🆔 ID: \`${ticketId}\``
+        )
+      );
+
+      return;
+    }
+
+    /* =====================================================
+       TICKET CLAIM
+    ===================================================== */
+
+    if (
+      interaction.isButton() &&
+      interaction.customId ===
+        "ticket_claim"
+    ) {
+      if (
+        !isStaff(
+          interaction.member
+        )
+      ) {
+        return interaction.reply({
+          content:
+            "⛔ Solo el Staff autorizado puede reclamar tickets.",
+          ephemeral: true
+        });
+      }
+
+      const ticket =
+        ticketRecordByChannel(
+          interaction.guild.id,
+          interaction.channel.id
+        );
+
+      if (!ticket) {
+        return interaction.reply({
+          content:
+            "❌ Este canal no está registrado como ticket.",
+          ephemeral: true
+        });
+      }
+
+      if (
+        ticket.claimedBy
+      ) {
+        return interaction.reply({
+          content:
+            `❌ Este ticket ya fue reclamado por <@${ticket.claimedBy}>.`,
+          ephemeral: true
+        });
+      }
+
+      ticket.claimedBy =
+        interaction.user.id;
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🙋 Ticket reclamado",
+            `👮 Este ticket ha sido reclamado por ${interaction.user}.\n\n` +
+            `El miembro del Staff se encargará de atender la solicitud.`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       TICKET CLOSE
+    ===================================================== */
+
+    if (
+      interaction.isButton() &&
+      interaction.customId ===
+        "ticket_close"
+    ) {
+      const ticket =
+        ticketRecordByChannel(
+          interaction.guild.id,
+          interaction.channel.id
+        );
+
+      if (!ticket) {
+        return interaction.reply({
+          content:
+            "❌ Este canal no es un ticket.",
+          ephemeral: true
+        });
+      }
+
+      if (
+        interaction.user.id !==
+          ticket.userId &&
+        !isStaff(
+          interaction.member
+        )
+      ) {
+        return interaction.reply({
+          content:
+            "⛔ No tienes permiso para cerrar este ticket.",
+          ephemeral: true
+        });
+      }
+
+      ticket.closed = true;
+
+      saveDB();
+
+      const ratingRow =
+        new ActionRowBuilder();
+
+      for (
+        let i = 1;
+        i <= 5;
+        i++
+      ) {
+        ratingRow.addComponents(
+          new ButtonBuilder()
+            .setCustomId(
+              `ticket_rate_${i}_${ticket.userId}`
+            )
+            .setLabel(
+              `${i} ⭐`
+            )
+            .setStyle(
+              ButtonStyle.Secondary
+            )
+        );
+      }
+
+      await interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🔒 Ticket cerrado",
+            `Este ticket ha sido cerrado correctamente.\n\n` +
+            `⭐ Si deseas valorar la atención recibida, selecciona una puntuación del **1 al 5**.\n\n` +
+            `El canal será eliminado próximamente.`
+          )
+        ],
+        components: [
+          ratingRow
+        ]
+      });
+
+      await sendLog(
+        interaction.guild,
+        data.channels.ticketLogs,
+        yellowEmbed(
+          "🔒 Ticket cerrado",
+          `👤 Usuario: <@${ticket.userId}>\n` +
+          `👮 Cerrado por: ${interaction.user}\n` +
+          `📌 Canal: ${interaction.channel.name}`
+        )
+      );
+
+      setTimeout(
+        async () => {
+          try {
+            await interaction.channel.delete();
+          } catch {}
+        },
+        60000
+      );
+
+      return;
+    }
+
+    /* =====================================================
+       TICKET RATING
+    ===================================================== */
+
+    if (
+      interaction.isButton() &&
+      interaction.customId.startsWith(
+        "ticket_rate_"
+      )
+    ) {
+      const parts =
+        interaction.customId.split(
+          "_"
+        );
+
+      const rating =
+        Number(parts[2]);
+
+      const userId =
+        parts[3];
+
+      if (
+        interaction.user.id !==
+        userId
+      ) {
+        return interaction.reply({
+          content:
+            "⛔ Solo el creador del ticket puede realizar esta valoración.",
+          ephemeral: true
+        });
+      }
+
+      const ticket =
+        ticketRecordByChannel(
+          interaction.guild.id,
+          interaction.channel.id
+        );
+
+      if (ticket) {
+        ticket.rating =
+          rating;
+
+        saveDB();
+      }
+
+      await interaction.reply({
+        content:
+          `⭐ Gracias por valorar la atención con **${rating}/5**.`,
+        ephemeral: true
+      });
+
+      await sendLog(
+        interaction.guild,
+        data.channels.ticketLogs,
+        yellowEmbed(
+          "⭐ Valoración de ticket",
+          `👤 Usuario: <@${userId}>\n` +
+          `⭐ Valoración: **${rating}/5**\n` +
+          `📌 Ticket: ${interaction.channel}`
+        )
+      );
+
+      return;
+    }
+
+    /* =====================================================
+       GIVEAWAY JOIN
+    ===================================================== */
+
+    if (
+      interaction.isButton() &&
+      interaction.customId.startsWith(
+        "giveaway_join_"
+      )
+    ) {
+      const id =
+        interaction.customId.replace(
+          "giveaway_join_",
+          ""
+        );
+
+      const giveaway =
+        data.giveaways[id];
+
+      if (
+        !giveaway ||
+        giveaway.ended
+      ) {
+        return interaction.reply({
+          content:
+            "❌ Este sorteo ya terminó.",
+          ephemeral: true
+        });
+      }
+
+      if (
+        giveaway.participants.includes(
+          interaction.user.id
+        )
+      ) {
+        return interaction.reply({
+          content:
+            "ℹ️ Ya estás participando en este sorteo.",
+          ephemeral: true
+        });
+      }
+
+      giveaway.participants.push(
+        interaction.user.id
+      );
+
+      saveDB();
+
+      return interaction.reply({
+        content:
+          "🎉 ¡Has entrado al sorteo correctamente!",
+        ephemeral: true
+      });
+    }
+
+    /* =====================================================
+       MODAL: CONFIGURACIÓN DE NIVELES
+    ===================================================== */
+
+    if (
+      interaction.isModalSubmit() &&
+      interaction.customId ===
+        "levels_config_modal"
+    ) {
+      if (
+        !isAdmin(
+          interaction.member
+        )
+      ) {
+        return interaction.reply({
+          content:
+            "⛔ Solo administradores.",
+          ephemeral: true
+        });
+      }
+
+      const data =
+        guildDB(
+          interaction.guild.id
+        );
+
+      const min =
+        Number(
+          interaction.fields.getTextInputValue(
+            "xp_min"
           )
         );
 
-        return interaction.showModal(modal);
-      }
+      const max =
+        Number(
+          interaction.fields.getTextInputValue(
+            "xp_max"
+          )
+        );
 
-      /* RATING */
+      const cooldown =
+        Number(
+          interaction.fields.getTextInputValue(
+            "cooldown"
+          )
+        );
+
+      const message =
+        interaction.fields.getTextInputValue(
+          "level_message"
+        );
 
       if (
-        interaction.customId.startsWith(
-          "ticket_rating_"
+        !Number.isInteger(min) ||
+        !Number.isInteger(max) ||
+        min < 1 ||
+        max < min ||
+        !Number.isInteger(
+          cooldown
+        ) ||
+        cooldown < 1
+      ) {
+        return interaction.reply({
+          content:
+            "❌ Los valores de XP o cooldown no son válidos.",
+          ephemeral: true
+        });
+      }
+
+      data.settings.levels.xpMin =
+        min;
+
+      data.settings.levels.xpMax =
+        max;
+
+      data.settings.levels.cooldown =
+        cooldown * 1000;
+
+      data.settings.levels.message =
+        message ||
+        "🎉 {usuario} ha subido al nivel **{nivel}**.";
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "📈 Niveles configurados",
+            `✨ XP: **${min}-${max}**\n` +
+            `⏱️ Cooldown: **${cooldown}s**\n\n` +
+            `📝 Mensaje actualizado correctamente.`
+          )
+        ],
+        ephemeral: true
+      });
+    }
+  }
+);
+
+/* =========================================================
+   SLASH COMMANDS
+========================================================= */
+
+const commands = [
+  new SlashCommandBuilder()
+    .setName("help")
+    .setDescription(
+      "Ver los comandos del bot"
+    ),
+
+  new SlashCommandBuilder()
+    .setName("admin")
+    .setDescription(
+      "Configurar y administrar Nisk Studio"
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("staffrole")
+    .setDescription(
+      "Configurar el rol de Staff"
+    )
+    .addRoleOption(
+      option =>
+        option
+          .setName("rol")
+          .setDescription(
+            "Rol de Staff"
+          )
+          .setRequired(true)
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("honeypot")
+    .setDescription(
+      "Configurar el canal Honeypot"
+    )
+    .addChannelOption(
+      option =>
+        option
+          .setName("canal")
+          .setDescription(
+            "Canal Honeypot"
+          )
+          .setRequired(true)
+          .addChannelTypes(
+            ChannelType.GuildText
+          )
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("honeypot-disable")
+    .setDescription(
+      "Desactivar el Honeypot"
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("addcategory")
+    .setDescription(
+      "Crear una categoría de tickets"
+    )
+    .addStringOption(
+      option =>
+        option
+          .setName("nombre")
+          .setDescription(
+            "Nombre"
+          )
+          .setRequired(true)
+    )
+    .addStringOption(
+      option =>
+        option
+          .setName("preguntas")
+          .setDescription(
+            "Preguntas separadas por |"
+          )
+          .setRequired(true)
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("removecategory")
+    .setDescription(
+      "Eliminar una categoría"
+    )
+    .addStringOption(
+      option =>
+        option
+          .setName("nombre")
+          .setDescription(
+            "Categoría"
+          )
+          .setRequired(true)
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("ticketcategory")
+    .setDescription(
+      "Configurar categoría de Discord para tickets"
+    )
+    .addChannelOption(
+      option =>
+        option
+          .setName("categoria")
+          .setDescription(
+            "Categoría de Discord"
+          )
+          .setRequired(true)
+          .addChannelTypes(
+            ChannelType.GuildCategory
+          )
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("ticketpanel")
+    .setDescription(
+      "Enviar el panel de tickets"
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("welcome")
+    .setDescription(
+      "Configurar bienvenida"
+    )
+    .addChannelOption(
+      option =>
+        option
+          .setName("canal")
+          .setDescription(
+            "Canal"
+          )
+          .setRequired(true)
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("invite")
+    .setDescription(
+      "Configurar canal de invitaciones"
+    )
+    .addChannelOption(
+      option =>
+        option
+          .setName("canal")
+          .setDescription(
+            "Canal"
+          )
+          .setRequired(true)
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("invitescheck")
+    .setDescription(
+      "Consultar invitaciones"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(false)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("autorole")
+    .setDescription(
+      "Añadir un autorol"
+    )
+    .addRoleOption(
+      option =>
+        option
+          .setName("rol")
+          .setDescription(
+            "Rol"
+          )
+          .setRequired(true)
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("autorole-remove")
+    .setDescription(
+      "Eliminar un autorol"
+    )
+    .addRoleOption(
+      option =>
+        option
+          .setName("rol")
+          .setDescription(
+            "Rol"
+          )
+          .setRequired(true)
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("logs")
+    .setDescription(
+      "Configurar un canal de logs"
+    )
+    .addStringOption(
+      option =>
+        option
+          .setName("tipo")
+          .setDescription(
+            "Tipo de log"
+          )
+          .setRequired(true)
+          .addChoices(
+            {
+              name: "General",
+              value: "generalLogs"
+            },
+            {
+              name: "Moderación",
+              value: "moderationLogs"
+            },
+            {
+              name: "Tickets",
+              value: "ticketLogs"
+            },
+            {
+              name: "Transacciones",
+              value: "transactionLogs"
+            },
+            {
+              name: "Niveles",
+              value: "levelLogs"
+            },
+            {
+              name: "Sorteos",
+              value: "giveawayLogs"
+            }
+          )
+    )
+    .addChannelOption(
+      option =>
+        option
+          .setName("canal")
+          .setDescription(
+            "Canal"
+          )
+          .setRequired(true)
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("levels")
+    .setDescription(
+      "Activar o desactivar niveles"
+    )
+    .addBooleanOption(
+      option =>
+        option
+          .setName("activo")
+          .setDescription(
+            "Activado"
+          )
+          .setRequired(true)
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("levelchannel")
+    .setDescription(
+      "Configurar canal de niveles"
+    )
+    .addChannelOption(
+      option =>
+        option
+          .setName("canal")
+          .setDescription(
+            "Canal"
+          )
+          .setRequired(true)
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("levelconfig")
+    .setDescription(
+      "Configurar XP y mensajes de niveles"
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("levelrole")
+    .setDescription(
+      "Asignar un rol a un nivel"
+    )
+    .addIntegerOption(
+      option =>
+        option
+          .setName("nivel")
+          .setDescription(
+            "Nivel"
+          )
+          .setRequired(true)
+          .setMinValue(1)
+    )
+    .addRoleOption(
+      option =>
+        option
+          .setName("rol")
+          .setDescription(
+            "Rol"
+          )
+          .setRequired(true)
+    )
+    .setDefaultMemberPermissions(
+      PermissionFlagsBits.Administrator
+    ),
+
+  new SlashCommandBuilder()
+    .setName("ban")
+    .setDescription(
+      "Banear un miembro"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("kick")
+    .setDescription(
+      "Expulsar un miembro"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("mute")
+    .setDescription(
+      "Aplicar timeout"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    )
+    .addIntegerOption(
+      option =>
+        option
+          .setName("minutos")
+          .setDescription(
+            "Duración"
+          )
+          .setRequired(true)
+          .setMinValue(1)
+          .setMaxValue(40320)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("unmute")
+    .setDescription(
+      "Quitar timeout"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("purge")
+    .setDescription(
+      "Eliminar mensajes"
+    )
+    .addIntegerOption(
+      option =>
+        option
+          .setName("cantidad")
+          .setDescription(
+            "Cantidad"
+          )
+          .setRequired(true)
+          .setMinValue(1)
+          .setMaxValue(100)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("warn")
+    .setDescription(
+      "Advertir a un miembro"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    )
+    .addStringOption(
+      option =>
+        option
+          .setName("razon")
+          .setDescription(
+            "Razón"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("warnings")
+    .setDescription(
+      "Ver advertencias"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("lock")
+    .setDescription(
+      "Bloquear el canal"
+    ),
+
+  new SlashCommandBuilder()
+    .setName("unlock")
+    .setDescription(
+      "Desbloquear el canal"
+    ),
+
+  new SlashCommandBuilder()
+    .setName("slowmode")
+    .setDescription(
+      "Configurar slowmode"
+    )
+    .addIntegerOption(
+      option =>
+        option
+          .setName("segundos")
+          .setDescription(
+            "0-21600"
+          )
+          .setRequired(true)
+          .setMinValue(0)
+          .setMaxValue(21600)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("balance")
+    .setDescription(
+      "Ver Coins Nisk"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(false)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("work")
+    .setDescription(
+      "Trabajar y ganar Coins Nisk"
+    ),
+
+  new SlashCommandBuilder()
+    .setName("luck")
+    .setDescription(
+      "Probar suerte gratis"
+    ),
+
+  new SlashCommandBuilder()
+    .setName("shop")
+    .setDescription(
+      "Ver la tienda"
+    ),
+
+  new SlashCommandBuilder()
+    .setName("inventory")
+    .setDescription(
+      "Ver tu inventario"
+    ),
+
+  new SlashCommandBuilder()
+    .setName("buy")
+    .setDescription(
+      "Comprar un artículo"
+    )
+    .addStringOption(
+      option =>
+        option
+          .setName("articulo")
+          .setDescription(
+            "ID del artículo"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("leaderboard")
+    .setDescription(
+      "Ver el TOP de Coins Nisk"
+    ),
+
+  new SlashCommandBuilder()
+    .setName("sorteo")
+    .setDescription(
+      "Crear un sorteo"
+    )
+    .addStringOption(
+      option =>
+        option
+          .setName("duracion")
+          .setDescription(
+            "Ejemplo: 30m, 1h, 2d"
+          )
+          .setRequired(true)
+    )
+    .addIntegerOption(
+      option =>
+        option
+          .setName("ganadores")
+          .setDescription(
+            "Cantidad de ganadores"
+          )
+          .setRequired(true)
+          .setMinValue(1)
+          .setMaxValue(20)
+    )
+    .addStringOption(
+      option =>
+        option
+          .setName("premio")
+          .setDescription(
+            "Premio del sorteo"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("rank")
+    .setDescription(
+      "Ver tu nivel"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(false)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("hug")
+    .setDescription(
+      "Dar un abrazo"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("highfive")
+    .setDescription(
+      "Chocar los cinco"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("poke")
+    .setDescription(
+      "Dar un toque"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("clap")
+    .setDescription(
+      "Aplaudir"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("wave")
+    .setDescription(
+      "Saludar"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("gift")
+    .setDescription(
+      "Enviar un regalo simbólico"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("cookie")
+    .setDescription(
+      "Dar una galleta"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("compliment")
+    .setDescription(
+      "Dar un cumplido"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("laugh")
+    .setDescription(
+      "Reírse con alguien"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("challenge")
+    .setDescription(
+      "Retar a alguien"
+    )
+    .addUserOption(
+      option =>
+        option
+          .setName("usuario")
+          .setDescription(
+            "Usuario"
+          )
+          .setRequired(true)
+    )
+].map(
+  command =>
+    command.toJSON()
+);
+
+/* =========================================================
+   SLASH HANDLER
+========================================================= */
+
+client.on(
+  "interactionCreate",
+  async interaction => {
+    if (
+      !interaction.isChatInputCommand()
+    ) {
+      return;
+    }
+
+    if (!interaction.guild) {
+      return;
+    }
+
+    const data =
+      guildDB(
+        interaction.guild.id
+      );
+
+    const adminOnly = [
+      "admin",
+      "staffrole",
+      "honeypot",
+      "honeypot-disable",
+      "addcategory",
+      "removecategory",
+      "ticketcategory",
+      "ticketpanel",
+      "welcome",
+      "invite",
+      "autorole",
+      "autorole-remove",
+      "logs",
+      "levels",
+      "levelchannel",
+      "levelconfig",
+      "levelrole"
+    ];
+
+    if (
+      adminOnly.includes(
+        interaction.commandName
+      ) &&
+      !isAdmin(
+        interaction.member
+      )
+    ) {
+      return interaction.reply({
+        content:
+          "⛔ Esta configuración es exclusiva para administradores.",
+        ephemeral: true
+      });
+    }
+
+    /* HELP */
+
+    if (
+      interaction.commandName ===
+      "help"
+    ) {
+      return sendHelp(
+        interaction,
+        true
+      );
+    }
+
+    /* ADMIN */
+
+    if (
+      interaction.commandName ===
+      "admin"
+    ) {
+      return sendAdminMenu(
+        interaction,
+        true
+      );
+    }
+
+    /* STAFF ROLE */
+
+    if (
+      interaction.commandName ===
+      "staffrole"
+    ) {
+      const role =
+        interaction.options.getRole(
+          "rol"
+        );
+
+      data.staffRole =
+        role.id;
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🛡️ Staff configurado",
+            `El rol de Staff ahora es ${role}.\n\n` +
+            `🛡️ El Staff puede realizar funciones operativas.\n` +
+            `🔐 La configuración del bot continúa siendo exclusiva de administradores.`
+          )
+        ],
+        ephemeral: true
+      });
+    }
+
+    /* HONEYPOT */
+
+    if (
+      interaction.commandName ===
+      "honeypot"
+    ) {
+      const channel =
+        interaction.options.getChannel(
+          "canal"
+        );
+
+      data.honeypot.channel =
+        channel.id;
+
+      const embed =
+        yellowEmbed(
+          "╭・✦・──────────────・✦・╮\n             🍯 HONEYPOT\n╰・✦・──────────────・✦・╯",
+          `⛔ **NO ESCRIBAS EN ESTE CANAL**\n\n` +
+          `Este canal está protegido por el sistema de seguridad de **Nisk Studio**.\n\n` +
+          `Las cuentas que escriban aquí podrán ser detectadas automáticamente.\n\n` +
+          `⚠️ Las cuentas administrativas quedan excluidas del sistema.`
+        );
+
+      const button =
+        new ButtonBuilder()
+          .setCustomId(
+            "honeypot_counter"
+          )
+          .setLabel(
+            `Ban: ${data.honeypot.bans}`
+          )
+          .setEmoji("🔨")
+          .setStyle(
+            ButtonStyle.Secondary
+          )
+          .setDisabled(true);
+
+      const sent =
+        await channel.send({
+          embeds: [embed],
+          components: [
+            new ActionRowBuilder().addComponents(
+              button
+            )
+          ]
+        });
+
+      data.honeypot.messageId =
+        sent.id;
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🍯 Honeypot configurado",
+            `El Honeypot ahora está activo en ${channel}.\n\n` +
+            `🔨 Bans registrados: **${data.honeypot.bans}**`
+          )
+        ],
+        ephemeral: true
+      });
+    }
+
+    if (
+      interaction.commandName ===
+      "honeypot-disable"
+    ) {
+      data.honeypot.channel =
+        null;
+
+      data.honeypot.messageId =
+        null;
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🍯 Honeypot desactivado",
+            "El sistema Honeypot ha sido desactivado correctamente."
+          )
+        ],
+        ephemeral: true
+      });
+    }
+
+    /* CATEGORÍA DE TICKETS */
+
+    if (
+      interaction.commandName ===
+      "ticketcategory"
+    ) {
+      const category =
+        interaction.options.getChannel(
+          "categoria"
+        );
+
+      data.ticketCategory =
+        category.id;
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🎫 Categoría de tickets",
+            `Los nuevos tickets se crearán dentro de ${category}.`
+          )
+        ],
+        ephemeral: true
+      });
+    }
+
+    /* ADD CATEGORY */
+
+    if (
+      interaction.commandName ===
+      "addcategory"
+    ) {
+      const name =
+        interaction.options.getString(
+          "nombre"
+        );
+
+      const questions =
+        interaction.options
+          .getString(
+            "preguntas"
+          )
+          .split("|")
+          .map(
+            x => x.trim()
+          )
+          .filter(Boolean)
+          .slice(0, 5);
+
+      const key =
+        cleanName(name);
+
+      data.ticketTypes[key] = {
+        name,
+        questions
+      };
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🎫 Categoría creada",
+            `📂 **${name}**\n\n` +
+            `Preguntas configuradas:\n` +
+            questions
+              .map(
+                (q, i) =>
+                  `**${i + 1}.** ${q}`
+              )
+              .join("\n")
+          )
+        ]
+      });
+    }
+
+    /* REMOVE CATEGORY */
+
+    if (
+      interaction.commandName ===
+      "removecategory"
+    ) {
+      const name =
+        interaction.options.getString(
+          "nombre"
+        );
+
+      const key =
+        cleanName(name);
+
+      if (
+        !data.ticketTypes[key]
+      ) {
+        return interaction.reply({
+          content:
+            "❌ Esa categoría no existe.",
+          ephemeral: true
+        });
+      }
+
+      delete data.ticketTypes[
+        key
+      ];
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🗑️ Categoría eliminada",
+            `La categoría **${name}** ha sido eliminada.`
+          )
+        ]
+      });
+    }
+
+    /* TICKET PANEL */
+
+    if (
+      interaction.commandName ===
+      "ticketpanel"
+    ) {
+      return sendTicketPanel(
+        null,
+        data,
+        interaction
+      );
+    }
+
+    /* WELCOME */
+
+    if (
+      interaction.commandName ===
+      "welcome"
+    ) {
+      const channel =
+        interaction.options.getChannel(
+          "canal"
+        );
+
+      data.channels.welcome =
+        channel.id;
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "👋 Bienvenida configurada",
+            `El canal de bienvenida será ${channel}.`
+          )
+        ],
+        ephemeral: true
+      });
+    }
+
+    /* INVITE */
+
+    if (
+      interaction.commandName ===
+      "invite"
+    ) {
+      const channel =
+        interaction.options.getChannel(
+          "canal"
+        );
+
+      data.channels.invites =
+        channel.id;
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🔗 Invitaciones configuradas",
+            `Las invitaciones se anunciarán en ${channel}.`
+          )
+        ],
+        ephemeral: true
+      });
+    }
+
+    /* INVITES CHECK */
+
+    if (
+      interaction.commandName ===
+      "invitescheck"
+    ) {
+      if (
+        !isStaff(
+          interaction.member
         )
       ) {
-        const parts =
-          interaction.customId.split("_");
+        return interaction.reply({
+          content:
+            "⛔ No tienes permisos.",
+          ephemeral: true
+        });
+      }
 
-        const ticketId = parts[2];
-        const rating = Number(parts[3]);
+      const user =
+        interaction.options.getUser(
+          "usuario"
+        ) ||
+        interaction.user;
 
-        return rateTicket(
-          interaction,
-          ticketId,
-          rating
+      const inviteData =
+        data.invites.users[
+          user.id
+        ] || {
+          total: 0,
+          active: 0,
+          left: 0
+        };
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🔗 Estadísticas de invitaciones",
+            `👤 Usuario: ${user}\n\n` +
+            `👥 Miembros invitados: **${inviteData.total}**\n` +
+            `🟢 Actualmente en el servidor: **${inviteData.active}**\n` +
+            `🔴 Invitados que se fueron: **${inviteData.left}**\n` +
+            `📊 Total registrado: **${inviteData.total}**`
+          )
+        ]
+      });
+    }
+
+    /* AUTOROLE */
+
+    if (
+      interaction.commandName ===
+      "autorole"
+    ) {
+      const role =
+        interaction.options.getRole(
+          "rol"
+        );
+
+      if (
+        !data.autoroles.includes(
+          role.id
+        )
+      ) {
+        data.autoroles.push(
+          role.id
         );
       }
 
-      /* GIVEAWAY JOIN */
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🎭 Autorol añadido",
+            `Los nuevos miembros recibirán automáticamente ${role}.`
+          )
+        ]
+      });
+    }
+
+    if (
+      interaction.commandName ===
+      "autorole-remove"
+    ) {
+      const role =
+        interaction.options.getRole(
+          "rol"
+        );
+
+      data.autoroles =
+        data.autoroles.filter(
+          id =>
+            id !== role.id
+        );
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🗑️ Autorol eliminado",
+            `${role} ya no se asignará automáticamente.`
+          )
+        ]
+      });
+    }
+
+    /* LOGS */
+
+    if (
+      interaction.commandName ===
+      "logs"
+    ) {
+      const type =
+        interaction.options.getString(
+          "tipo"
+        );
+
+      const channel =
+        interaction.options.getChannel(
+          "canal"
+        );
+
+      data.channels[type] =
+        channel.id;
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "📋 Logs configurados",
+            `El canal ${channel} ha sido configurado para **${type}**.`
+          )
+        ],
+        ephemeral: true
+      });
+    }
+
+    /* LEVELS */
+
+    if (
+      interaction.commandName ===
+      "levels"
+    ) {
+      const enabled =
+        interaction.options.getBoolean(
+          "activo"
+        );
+
+      data.settings.levels.enabled =
+        enabled;
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "📈 Niveles actualizados",
+            `El sistema de niveles está ahora **${enabled ? "ACTIVADO" : "DESACTIVADO"}**.`
+          )
+        ],
+        ephemeral: true
+      });
+    }
+
+    if (
+      interaction.commandName ===
+      "levelchannel"
+    ) {
+      const channel =
+        interaction.options.getChannel(
+          "canal"
+        );
+
+      data.settings.levels.channel =
+        channel.id;
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "📈 Canal de niveles",
+            `Los mensajes de subida de nivel se enviarán en ${channel}.`
+          )
+        ],
+        ephemeral: true
+      });
+    }
+
+    if (
+      interaction.commandName ===
+      "levelconfig"
+    ) {
+      const modal =
+        new ModalBuilder()
+          .setCustomId(
+            "levels_config_modal"
+          )
+          .setTitle(
+            "Configuración de niveles"
+          );
+
+      const min =
+        new TextInputBuilder()
+          .setCustomId(
+            "xp_min"
+          )
+          .setLabel(
+            "XP mínima"
+          )
+          .setStyle(
+            TextInputStyle.Short
+          )
+          .setValue(
+            String(
+              data.settings.levels.xpMin
+            )
+          )
+          .setRequired(true);
+
+      const max =
+        new TextInputBuilder()
+          .setCustomId(
+            "xp_max"
+          )
+          .setLabel(
+            "XP máxima"
+          )
+          .setStyle(
+            TextInputStyle.Short
+          )
+          .setValue(
+            String(
+              data.settings.levels.xpMax
+            )
+          )
+          .setRequired(true);
+
+      const cooldown =
+        new TextInputBuilder()
+          .setCustomId(
+            "cooldown"
+          )
+          .setLabel(
+            "Cooldown en segundos"
+          )
+          .setStyle(
+            TextInputStyle.Short
+          )
+          .setValue(
+            String(
+              data.settings.levels.cooldown /
+                1000
+            )
+          )
+          .setRequired(true);
+
+      const message =
+        new TextInputBuilder()
+          .setCustomId(
+            "level_message"
+          )
+          .setLabel(
+            "Mensaje de subida"
+          )
+          .setStyle(
+            TextInputStyle.Paragraph
+          )
+          .setValue(
+            data.settings.levels.message
+          )
+          .setRequired(true);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          min
+        ),
+        new ActionRowBuilder().addComponents(
+          max
+        ),
+        new ActionRowBuilder().addComponents(
+          cooldown
+        ),
+        new ActionRowBuilder().addComponents(
+          message
+        )
+      );
+
+      return interaction.showModal(
+        modal
+      );
+    }
+
+    if (
+      interaction.commandName ===
+      "levelrole"
+    ) {
+      const level =
+        interaction.options.getInteger(
+          "nivel"
+        );
+
+      const role =
+        interaction.options.getRole(
+          "rol"
+        );
+
+      data.settings.levels.roleRewards[
+        String(level)
+      ] = role.id;
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🏆 Recompensa de nivel",
+            `Cuando un usuario llegue al nivel **${level}**, recibirá ${role}.`
+          )
+        ],
+        ephemeral: true
+      });
+    }
+
+    /* =====================================================
+       MODERACIÓN
+    ===================================================== */
+
+    const moderationCommands = [
+      "ban",
+      "kick",
+      "mute",
+      "unmute",
+      "purge",
+      "warn",
+      "warnings",
+      "lock",
+      "unlock",
+      "slowmode"
+    ];
+
+    if (
+      moderationCommands.includes(
+        interaction.commandName
+      ) &&
+      !isStaff(
+        interaction.member
+      )
+    ) {
+      return interaction.reply({
+        content:
+          "⛔ No tienes permisos de Staff.",
+        ephemeral: true
+      });
+    }
+
+    /* BAN */
+
+    if (
+      interaction.commandName ===
+      "ban"
+    ) {
+      const user =
+        interaction.options.getUser(
+          "usuario"
+        );
+
+      const member =
+        await interaction.guild.members
+          .fetch(
+            user.id
+          )
+          .catch(
+            () => null
+          );
 
       if (
-        interaction.customId.startsWith(
-          "giveaway_join_"
-        )
+        !member ||
+        !member.bannable
       ) {
-        const giveawayId =
-          interaction.customId.replace(
-            "giveaway_join_",
-            ""
-          );
+        return interaction.reply({
+          content:
+            "❌ No puedo banear a ese usuario.",
+          ephemeral: true
+        });
+      }
 
-        const giveaway =
-          data.giveaways[giveawayId];
+      await member.ban({
+        reason:
+          `Ban realizado por ${interaction.user.tag}`
+      });
 
-        if (!giveaway) {
-          return interaction.reply({
-            content: "❌ Sorteo no encontrado.",
-            ephemeral: true
-          });
-        }
+      await sendLog(
+        interaction.guild,
+        data.channels.moderationLogs,
+        yellowEmbed(
+          "🔨 Usuario baneado",
+          `👤 Usuario: **${user.tag}**\n` +
+          `👮 Moderador: ${interaction.user}`
+        )
+      );
 
-        if (giveaway.ended) {
-          return interaction.reply({
-            content: "❌ Este sorteo ya terminó.",
-            ephemeral: true
-          });
-        }
-
-        if (
-          giveaway.participants.includes(
-            interaction.user.id
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🔨 Usuario baneado",
+            `👤 Usuario: **${user.tag}**\n` +
+            `👮 Moderador: ${interaction.user}`
           )
-        ) {
-          return interaction.reply({
-            content:
-              "❌ Ya estás participando en este sorteo.",
-            ephemeral: true
-          });
-        }
+        ]
+      });
+    }
 
-        const levelData =
-          getLevelData(
-            interaction.guild,
-            interaction.user.id
+    /* KICK */
+
+    if (
+      interaction.commandName ===
+      "kick"
+    ) {
+      const user =
+        interaction.options.getUser(
+          "usuario"
+        );
+
+      const member =
+        await interaction.guild.members
+          .fetch(
+            user.id
+          )
+          .catch(
+            () => null
           );
 
-        const inviteData =
-          data.invites.users[
-            interaction.user.id
-          ] || {
-            total: 0
-          };
+      if (
+        !member ||
+        !member.kickable
+      ) {
+        return interaction.reply({
+          content:
+            "❌ No puedo expulsar a ese usuario.",
+          ephemeral: true
+        });
+      }
 
-        if (
-          inviteData.total <
-          giveaway.inviteRequirement
-        ) {
-          return interaction.reply({
-            content: `❌ Necesitas al menos **${giveaway.inviteRequirement} invitaciones**.`,
-            ephemeral: true
-          });
+      await member.kick(
+        `Kick realizado por ${interaction.user.tag}`
+      );
+
+      await sendLog(
+        interaction.guild,
+        data.channels.moderationLogs,
+        yellowEmbed(
+          "👢 Usuario expulsado",
+          `👤 Usuario: **${user.tag}**\n` +
+          `👮 Moderador: ${interaction.user}`
+        )
+      );
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "👢 Usuario expulsado",
+            `👤 Usuario: **${user.tag}**`
+          )
+        ]
+      });
+    }
+
+    /* MUTE */
+
+    if (
+      interaction.commandName ===
+      "mute"
+    ) {
+      const user =
+        interaction.options.getUser(
+          "usuario"
+        );
+
+      const minutes =
+        interaction.options.getInteger(
+          "minutos"
+        );
+
+      const member =
+        await interaction.guild.members
+          .fetch(
+            user.id
+          )
+          .catch(
+            () => null
+          );
+
+      if (
+        !member ||
+        !member.moderatable
+      ) {
+        return interaction.reply({
+          content:
+            "❌ No puedo aplicar timeout.",
+          ephemeral: true
+        });
+      }
+
+      await member.timeout(
+        minutes *
+          60 *
+          1000,
+        `Timeout realizado por ${interaction.user.tag}`
+      );
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🔇 Usuario silenciado",
+            `👤 Usuario: **${user.tag}**\n` +
+            `⏱️ Duración: **${minutes} minutos**\n` +
+            `👮 Moderador: ${interaction.user}`
+          )
+        ]
+      });
+    }
+
+    /* UNMUTE */
+
+    if (
+      interaction.commandName ===
+      "unmute"
+    ) {
+      const user =
+        interaction.options.getUser(
+          "usuario"
+        );
+
+      const member =
+        await interaction.guild.members
+          .fetch(
+            user.id
+          )
+          .catch(
+            () => null
+          );
+
+      if (!member) {
+        return interaction.reply({
+          content:
+            "❌ No encontré al miembro.",
+          ephemeral: true
+        });
+      }
+
+      await member.timeout(
+        null
+      );
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🔊 Timeout retirado",
+            `👤 ${user}\n\n` +
+            `El timeout ha sido retirado correctamente.`
+          )
+        ]
+      });
+    }
+
+    /* PURGE */
+
+    if (
+      interaction.commandName ===
+      "purge"
+    ) {
+      const amount =
+        interaction.options.getInteger(
+          "cantidad"
+        );
+
+      await interaction.channel.bulkDelete(
+        amount,
+        true
+      );
+
+      return interaction.reply({
+        content:
+          `🧹 Se eliminaron **${amount}** mensajes.`,
+        ephemeral: true
+      });
+    }
+
+    /* WARN */
+
+    if (
+      interaction.commandName ===
+      "warn"
+    ) {
+      const user =
+        interaction.options.getUser(
+          "usuario"
+        );
+
+      const reason =
+        interaction.options.getString(
+          "razon"
+        );
+
+      data.warns[user.id] ||=
+        [];
+
+      data.warns[user.id].push({
+        reason,
+        moderator:
+          interaction.user.id,
+        date: Date.now()
+      });
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "⚠️ Advertencia",
+            `👤 Usuario: ${user}\n` +
+            `📝 Razón: ${reason}\n` +
+            `👮 Moderador: ${interaction.user}`
+          )
+        ]
+      });
+    }
+
+    /* WARNINGS */
+
+    if (
+      interaction.commandName ===
+      "warnings"
+    ) {
+      const user =
+        interaction.options.getUser(
+          "usuario"
+        );
+
+      const warns =
+        data.warns[user.id] ||
+        [];
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "📋 Advertencias",
+            warns.length
+              ? warns
+                  .map(
+                    (w, i) =>
+                      `**${i + 1}.** ${w.reason}\n👮 <@${w.moderator}>`
+                  )
+                  .join(
+                    "\n\n"
+                  )
+              : `${user} no tiene advertencias registradas.`
+          )
+        ]
+      });
+    }
+
+    /* LOCK */
+
+    if (
+      interaction.commandName ===
+      "lock"
+    ) {
+      await interaction.channel.permissionOverwrites.edit(
+        interaction.guild.roles.everyone,
+        {
+          SendMessages:
+            false
         }
+      );
 
-        if (
-          levelData.level <
-          giveaway.levelRequirement
-        ) {
-          return interaction.reply({
-            content: `❌ Necesitas ser nivel **${giveaway.levelRequirement}**.`,
-            ephemeral: true
-          });
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🔒 Canal bloqueado",
+            `El canal ha sido bloqueado por ${interaction.user}.`
+          )
+        ]
+      });
+    }
+
+    /* UNLOCK */
+
+    if (
+      interaction.commandName ===
+      "unlock"
+    ) {
+      await interaction.channel.permissionOverwrites.edit(
+        interaction.guild.roles.everyone,
+        {
+          SendMessages:
+            null
         }
+      );
 
-        giveaway.participants.push(
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🔓 Canal desbloqueado",
+            `El canal vuelve a estar disponible.`
+          )
+        ]
+      });
+    }
+
+    /* SLOWMODE */
+
+    if (
+      interaction.commandName ===
+      "slowmode"
+    ) {
+      const seconds =
+        interaction.options.getInteger(
+          "segundos"
+        );
+
+      await interaction.channel.setRateLimitPerUser(
+        seconds
+      );
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "🐌 Slowmode",
+            `El slowmode ahora es de **${seconds} segundos**.`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       ECONOMÍA
+    ===================================================== */
+
+    if (
+      interaction.commandName ===
+      "balance"
+    ) {
+      const user =
+        interaction.options.getUser(
+          "usuario"
+        ) ||
+        interaction.user;
+
+      const account =
+        getEconomyUser(
+          interaction.guild.id,
+          user.id
+        );
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "💰 Coins Nisk",
+            `👤 Usuario: ${user}\n\n` +
+            `💰 Saldo: **${account.coins} Coins Nisk**`
+          )
+        ]
+      });
+    }
+
+    if (
+      interaction.commandName ===
+      "work"
+    ) {
+      const account =
+        getEconomyUser(
+          interaction.guild.id,
           interaction.user.id
         );
 
-        saveDB();
+      const cooldown =
+        30000;
 
+      const remaining =
+        cooldown -
+        (
+          Date.now() -
+          account.lastWork
+        );
+
+      if (
+        remaining > 0
+      ) {
         return interaction.reply({
           content:
-            "🎉 ¡Has entrado correctamente al sorteo!",
+            `💼 Debes esperar **${formatTime(remaining)}** para volver a trabajar.`,
           ephemeral: true
         });
       }
+
+      const reward =
+        Math.floor(
+          Math.random() *
+          201
+        ) + 100;
+
+      account.coins +=
+        reward;
+
+      account.lastWork =
+        Date.now();
+
+      saveDB();
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "💼 Trabajo completado",
+            `💰 Has ganado **${reward} Coins Nisk**.\n\n` +
+            `💳 Nuevo saldo: **${account.coins} Coins Nisk**`
+          )
+        ]
+      });
     }
-  } catch (error) {
-    console.error("❌ Error en interactionCreate:", error);
 
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        content:
-          "❌ Ocurrió un error al procesar esta acción.",
-        ephemeral: true
-      }).catch(() => {});
+    if (
+      interaction.commandName ===
+      "luck"
+    ) {
+      return playLuck(
+        interaction,
+        true
+      );
     }
-  }
-});
 
-/* =========================================================
-   LOGS DE MENSAJES
-========================================================= */
+    if (
+      interaction.commandName ===
+      "shop"
+    ) {
+      return sendShop(
+        interaction,
+        true
+      );
+    }
 
-client.on("messageDelete", async message => {
-  if (!message.guild || message.author?.bot) return;
+    if (
+      interaction.commandName ===
+      "inventory"
+    ) {
+      return sendInventory(
+        interaction,
+        true
+      );
+    }
 
-  await sendLog(
-    message.guild,
-    "generalLogs",
-    yellowEmbed(
-      "🗑️ Mensaje eliminado",
-      `👤 **Autor:** ${
-        message.author || "Desconocido"
+    if (
+      interaction.commandName ===
+      "buy"
+    ) {
+      const item =
+        interaction.options.getString(
+          "articulo"
+        );
+
+      return buyShopItem(
+        interaction,
+        item,
+        true
+      );
+    }
+
+    if (
+      interaction.commandName ===
+      "leaderboard"
+    ) {
+      return sendLeaderboard(
+        interaction,
+        true
+      );
+    }
+
+    /* SORTEO */
+
+    if (
+      interaction.commandName ===
+      "sorteo"
+    ) {
+      if (
+        !isStaff(
+          interaction.member
+        )
+      ) {
+        return interaction.reply({
+          content:
+            "⛔ Solo el Staff autorizado puede crear sorteos.",
+          ephemeral: true
+        });
       }
 
-📺 **Canal:** ${message.channel}
+      const durationText =
+        interaction.options.getString(
+          "duracion"
+        );
 
-💬 **Contenido:**
-${message.content || "Sin contenido de texto"}`
-    )
-  );
-});
+      const duration =
+        parseDuration(
+          durationText
+        );
 
-client.on("messageUpdate", async (oldMessage, newMessage) => {
-  if (!oldMessage.guild) return;
-  if (oldMessage.author?.bot) return;
+      const winners =
+        interaction.options.getInteger(
+          "ganadores"
+        );
 
-  if (oldMessage.content === newMessage.content) return;
+      const prize =
+        interaction.options.getString(
+          "premio"
+        );
 
-  await sendLog(
-    oldMessage.guild,
-    "generalLogs",
-    yellowEmbed(
-      "✏️ Mensaje editado",
-      `👤 **Autor:** ${oldMessage.author}
+      if (!duration) {
+        return interaction.reply({
+          content:
+            "❌ Duración inválida. Usa formatos como `30m`, `1h` o `2d`.",
+          ephemeral: true
+        });
+      }
 
-📺 **Canal:** ${oldMessage.channel}
+      return createGiveaway(
+        interaction,
+        duration,
+        winners,
+        prize
+      );
+    }
 
-**Antes:**
-${oldMessage.content || "Sin contenido"}
+    /* RANK */
 
-**Después:**
-${newMessage.content || "Sin contenido"}`
-    )
-  );
-});
+    if (
+      interaction.commandName ===
+      "rank"
+    ) {
+      const user =
+        interaction.options.getUser(
+          "usuario"
+        ) ||
+        interaction.user;
+
+      const level =
+        getLevelData(
+          interaction.guild.id,
+          user.id
+        );
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            "📈 Perfil de nivel",
+            `👤 ${user}\n\n` +
+            `🏆 Nivel: **${level.level}**\n` +
+            `✨ XP: **${level.xp}/${xpNeeded(level.level)}**`
+          )
+        ]
+      });
+    }
+
+    /* =====================================================
+       INTERACCIONES
+    ===================================================== */
+
+    const slashInteractions = {
+      hug: [
+        "🤗 ABRAZO",
+        "le ha dado un gran abrazo a",
+        "Parece que alguien necesitaba buena energía. ✨"
+      ],
+
+      highfive: [
+        "🙌 HIGH FIVE",
+        "le ha chocado los cinco a",
+        "¡Esa energía se siente hasta aquí! ⚡"
+      ],
+
+      poke: [
+        "👉 POKE",
+        "ha dado un pequeño toque a",
+        "¡Ey! ¿Qué está pasando por aquí? 👀"
+      ],
+
+      clap: [
+        "👏 APLAUSO",
+        "le ha dado un aplauso a",
+        "¡Momento de reconocer el esfuerzo! ✨"
+      ],
+
+      wave: [
+        "👋 SALUDO",
+        "ha saludado a",
+        "¡Qué bueno verte por Nisk Studio! 💛"
+      ],
+
+      gift: [
+        "🎁 REGALO",
+        "le ha enviado un regalo simbólico a",
+        "¡Un pequeño detalle para alegrar el día! 🎀"
+      ],
+
+      cookie: [
+        "🍪 GALLETA",
+        "le ha dado una galleta a",
+        "¡Una galletita nunca viene mal! 🍪"
+      ],
+
+      compliment: [
+        "✨ CUMPLIDO",
+        "le ha dejado un cumplido a",
+        "¡Las buenas palabras siempre suman! 💛"
+      ],
+
+      laugh: [
+        "😂 RISA",
+        "se ha reído con",
+        "¡La diversión continúa! 😂"
+      ],
+
+      challenge: [
+        "⚔️ RETO",
+        "ha retado a",
+        "¡Que empiece el desafío! 🔥"
+      ]
+    };
+
+    if (
+      slashInteractions[
+        interaction.commandName
+      ]
+    ) {
+      const target =
+        interaction.options.getUser(
+          "usuario"
+        );
+
+      const info =
+        slashInteractions[
+          interaction.commandName
+        ];
+
+      return interaction.reply({
+        embeds: [
+          yellowEmbed(
+            `╭・✦・──────────────・✦・╮\n             ${info[0]}\n╰・✦・──────────────・✦・╯`,
+            `💛 ${interaction.user} ${info[1]} ${target}.\n\n` +
+            `${info[2]}\n\n` +
+            `🤝 **Nisk Studio | Interacciones**`
+          )
+        ]
+      });
+    }
+  }
+);
 
 /* =========================================================
-   INVITE CACHE
+   REGISTRO DE SLASH COMMANDS
 ========================================================= */
 
-client.on("inviteCreate", async invite => {
-  await cacheGuildInvites(invite.guild);
-});
+async function registerCommands() {
+  try {
+    const rest =
+      new REST({
+        version: "10"
+      }).setToken(
+        TOKEN
+      );
 
-client.on("inviteDelete", async invite => {
-  await cacheGuildInvites(invite.guild);
-});
+    console.log(
+      "🔄 Registrando comandos..."
+    );
+
+    await rest.put(
+      Routes.applicationCommands(
+        client.user.id
+      ),
+      {
+        body: commands
+      }
+    );
+
+    console.log(
+      `✅ ${commands.length} comandos registrados.`
+    );
+  } catch (error) {
+    console.error(
+      "❌ Error registrando comandos:",
+      error
+    );
+  }
+}
+
+/* =========================================================
+   ERRORES
+========================================================= */
+
+process.on(
+  "unhandledRejection",
+  error => {
+    console.error(
+      "❌ Unhandled Rejection:",
+      error
+    );
+  }
+);
+
+process.on(
+  "uncaughtException",
+  error => {
+    console.error(
+      "❌ Uncaught Exception:",
+      error
+    );
+  }
+);
 
 /* =========================================================
    LOGIN
